@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cpitd"
+version = "0.1.0"
+description = "Copy Paste Is The Devil — language-agnostic code clone detection"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "cpitd contributors" },
+]
+keywords = ["clone-detection", "static-analysis", "code-quality", "winnowing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "click>=8.1",
+    "pygments>=2.17",
+]
+
+[project.scripts]
+cpitd = "cpitd.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "black>=24.0",
+    "sphinx>=7.2",
+    "sphinx-rtd-theme>=2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["cpitd*"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["cpitd"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
