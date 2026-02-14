@@ -1,16 +1,21 @@
-"""Winnowing fingerprinting algorithm for clone detection.
+"""Winnowing fingerprinting algorithm and line-hash tree for clone detection.
 
-Implements the winnowing algorithm from Schleimer, Wilkerson, and Aiken (2003).
-Given a sequence of tokens, produces a set of position-tagged hash fingerprints
-that guarantee detection of any shared substring of sufficient length.
+Implements the winnowing algorithm from Schleimer, Wilkerson, and Aiken (2003)
+and a line-based hash tree for detecting copy-pasted code regions.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Sequence
 
 from cpitd.tokenizer import Token
+
+# Algorithm internals — not exposed as CLI options.
+_K_GRAM_SIZE = 5
+_WINDOW_SIZE = 4
+_MAX_TREE_LEVEL = 8  # 2^8 = 256 lines max group
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,3 +99,105 @@ def fingerprint(
             prev_selected_idx = min_idx
 
     return selected
+
+
+# ---------------------------------------------------------------------------
+# Line-hash tree — per-line hashing with a binary tree for group detection
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LineHash:
+    """Hash of a single source line's tokens."""
+
+    hash_value: int
+    line: int
+    token_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class HashTreeNode:
+    """A node in the binary hash tree covering a contiguous range of lines."""
+
+    hash_value: int
+    start_line: int
+    end_line: int
+    level: int
+    token_count: int
+
+
+def hash_lines(tokens: Sequence[Token]) -> list[LineHash]:
+    """Group tokens by source line and produce a hash for each line.
+
+    Args:
+        tokens: Sequence of tokens (whitespace/comments already stripped).
+
+    Returns:
+        One ``LineHash`` per source line that contains at least one token,
+        ordered by line number.
+    """
+    by_line: dict[int, list[str]] = defaultdict(list)
+    for t in tokens:
+        by_line[t.line].append(t.value)
+
+    return [
+        LineHash(
+            hash_value=hash(tuple(values)),
+            line=line,
+            token_count=len(values),
+        )
+        for line, values in sorted(by_line.items())
+    ]
+
+
+def build_hash_tree(line_hashes: list[LineHash]) -> list[list[HashTreeNode]]:
+    """Build a fixed-alignment binary hash tree over line hashes.
+
+    Level 0 contains one leaf node per line hash.  Each subsequent level
+    pairs adjacent nodes (fixed alignment: indices 0-1, 2-3, …) and
+    hashes their combined values.  An odd trailing node does not promote.
+
+    Args:
+        line_hashes: Per-line hashes from :func:`hash_lines`.
+
+    Returns:
+        List of levels, where ``levels[k]`` contains nodes spanning 2^k
+        consecutive lines.  Capped at ``_MAX_TREE_LEVEL``.
+    """
+    if not line_hashes:
+        return []
+
+    # Level 0: leaves
+    level_0 = [
+        HashTreeNode(
+            hash_value=lh.hash_value,
+            start_line=lh.line,
+            end_line=lh.line,
+            level=0,
+            token_count=lh.token_count,
+        )
+        for lh in line_hashes
+    ]
+
+    levels: list[list[HashTreeNode]] = [level_0]
+
+    for lvl in range(1, _MAX_TREE_LEVEL + 1):
+        prev = levels[lvl - 1]
+        if len(prev) < 2:
+            break
+
+        current: list[HashTreeNode] = []
+        for i in range(0, len(prev) - 1, 2):
+            left, right = prev[i], prev[i + 1]
+            current.append(
+                HashTreeNode(
+                    hash_value=hash((left.hash_value, right.hash_value)),
+                    start_line=left.start_line,
+                    end_line=right.end_line,
+                    level=lvl,
+                    token_count=left.token_count + right.token_count,
+                )
+            )
+        levels.append(current)
+
+    return levels

@@ -1,8 +1,13 @@
 """CLI interface for cpitd using Click."""
 
+import sys
+
 import click
 
 from cpitd import __version__
+from cpitd.config import Config
+from cpitd.pipeline import scan_and_report
+from cpitd.tokenizer import NormalizationLevel
 
 
 @click.command()
@@ -13,18 +18,6 @@ from cpitd import __version__
     default=50,
     show_default=True,
     help="Minimum token sequence length to report.",
-)
-@click.option(
-    "--k-gram-size",
-    default=5,
-    show_default=True,
-    help="Size of k-gram for fingerprinting.",
-)
-@click.option(
-    "--window-size",
-    default=4,
-    show_default=True,
-    help="Winnowing window size.",
 )
 @click.option(
     "--normalize",
@@ -54,8 +47,6 @@ from cpitd import __version__
 def main(
     paths,
     min_tokens,
-    k_gram_size,
-    window_size,
     normalize,
     output_format,
     ignore,
@@ -64,11 +55,18 @@ def main(
     """Detect copy-pasted code clones across a codebase.
 
     Pass one or more file or directory PATHS to analyze.
+    Defaults to the current directory if none are given.
     """
     if not paths:
-        click.echo("No paths provided. Use --help for usage information.", err=True)
-        raise SystemExit(1)
+        paths = (".",)
 
-    click.echo(f"cpitd v{__version__} — scanning {len(paths)} path(s)...")
-    click.echo("Clone detection not yet implemented.")
-    raise SystemExit(0)
+    config = Config(
+        min_tokens=min_tokens,
+        normalize=NormalizationLevel(normalize),
+        output_format=output_format,
+        ignore_patterns=tuple(ignore),
+        languages=tuple(languages),
+    )
+
+    reports = scan_and_report(config, paths, out=sys.stdout)
+    raise SystemExit(1 if reports else 0)
