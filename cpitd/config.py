@@ -12,8 +12,6 @@ class Config:
     """Runtime configuration for a cpitd analysis run."""
 
     min_tokens: int = 50
-    k_gram_size: int = 5
-    window_size: int = 4
     normalize: NormalizationLevel = NormalizationLevel.EXACT
     output_format: str = "human"
     ignore_patterns: tuple[str, ...] = ()

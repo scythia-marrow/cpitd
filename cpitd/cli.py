@@ -20,18 +20,6 @@ from cpitd.tokenizer import NormalizationLevel
     help="Minimum token sequence length to report.",
 )
 @click.option(
-    "--k-gram-size",
-    default=5,
-    show_default=True,
-    help="Size of k-gram for fingerprinting.",
-)
-@click.option(
-    "--window-size",
-    default=4,
-    show_default=True,
-    help="Winnowing window size.",
-)
-@click.option(
     "--normalize",
     type=click.IntRange(0, 2),
     default=0,
@@ -59,8 +47,6 @@ from cpitd.tokenizer import NormalizationLevel
 def main(
     paths,
     min_tokens,
-    k_gram_size,
-    window_size,
     normalize,
     output_format,
     ignore,
@@ -76,8 +62,6 @@ def main(
 
     config = Config(
         min_tokens=min_tokens,
-        k_gram_size=k_gram_size,
-        window_size=window_size,
         normalize=NormalizationLevel(normalize),
         output_format=output_format,
         ignore_patterns=tuple(ignore),

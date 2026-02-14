@@ -1,4 +1,4 @@
-"""Scan pipeline — wires tokenizer, winnowing, indexer, and reporter together."""
+"""Scan pipeline — wires tokenizer, hash tree, indexer, and reporter together."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from typing import TextIO
 
 from cpitd.config import Config
 from cpitd.discovery import discover_files
-from cpitd.indexer import FingerprintIndex
-from cpitd.reporter import CloneReport, aggregate_clone_pairs, format_human, format_json
+from cpitd.indexer import LineHashIndex
+from cpitd.reporter import CloneReport, aggregate_clone_matches, format_human, format_json
 from cpitd.tokenizer import NormalizationLevel, tokenize
-from cpitd.winnowing import fingerprint
+from cpitd.winnowing import build_hash_tree, hash_lines
 
 
 def scan(config: Config, paths: tuple[str, ...]) -> list[CloneReport]:
@@ -31,7 +31,7 @@ def scan(config: Config, paths: tuple[str, ...]) -> list[CloneReport]:
     )
 
     level = NormalizationLevel(config.normalize)
-    index = FingerprintIndex()
+    index = LineHashIndex()
 
     for file_path in files:
         source = _read_file(file_path)
@@ -42,11 +42,12 @@ def scan(config: Config, paths: tuple[str, ...]) -> list[CloneReport]:
         if len(tokens) < config.min_tokens:
             continue
 
-        fps = fingerprint(tokens, k=config.k_gram_size, window_size=config.window_size)
-        index.add(str(file_path), fps)
+        line_hashes = hash_lines(tokens)
+        tree = build_hash_tree(line_hashes)
+        index.add(str(file_path), tree)
 
-    pairs = index.find_clones()
-    return aggregate_clone_pairs(pairs)
+    matches = index.find_clones()
+    return aggregate_clone_matches(matches)
 
 
 def scan_and_report(
