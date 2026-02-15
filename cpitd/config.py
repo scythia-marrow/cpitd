@@ -19,6 +19,7 @@ class Config:
     output_format: str = "human"
     ignore_patterns: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
+    suppress_patterns: tuple[str, ...] = ()
 
 
 class ConfigFileError(Exception):
@@ -31,9 +32,10 @@ _TOML_KEY_TO_FIELD: dict[str, str] = {
     "format": "output_format",
     "ignore": "ignore_patterns",
     "languages": "languages",
+    "suppress": "suppress_patterns",
 }
 
-_TUPLE_FIELDS = frozenset({"ignore_patterns", "languages"})
+_TUPLE_FIELDS = frozenset({"ignore_patterns", "languages", "suppress_patterns"})
 
 
 def _require_strict_int(toml_key: str, value: object, hint: str = "") -> int:

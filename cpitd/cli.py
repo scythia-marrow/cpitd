@@ -18,10 +18,14 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
         if source is click.core.ParameterSource.COMMANDLINE:
             if param_name == "normalize":
                 explicit[param_name] = NormalizationLevel(value)
-            elif param_name in {"ignore", "languages"}:
+            elif param_name in {"ignore", "languages", "suppress"}:
                 # Map CLI names to Config field names, convert to tuple
-                field = "ignore_patterns" if param_name == "ignore" else "languages"
-                explicit[field] = tuple(value)
+                field_map = {
+                    "ignore": "ignore_patterns",
+                    "languages": "languages",
+                    "suppress": "suppress_patterns",
+                }
+                explicit[field_map[param_name]] = tuple(value)
             else:
                 explicit[param_name] = value
     return explicit
@@ -61,6 +65,12 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
     multiple=True,
     help="Restrict to specific languages (repeatable).",
 )
+@click.option(
+    "--suppress",
+    multiple=True,
+    help="Glob patterns to suppress clone groups (repeatable). "
+    "If any source line in a clone chunk matches, the group is suppressed.",
+)
 @click.pass_context
 def main(
     ctx,
@@ -70,6 +80,7 @@ def main(
     output_format,
     ignore,
     languages,
+    suppress,
 ):
     """Detect copy-pasted code clones across a codebase.
 
@@ -86,6 +97,7 @@ def main(
         output_format=output_format,
         ignore=ignore,
         languages=languages,
+        suppress=suppress,
     )
 
     try:
