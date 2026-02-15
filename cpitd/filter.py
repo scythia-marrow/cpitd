@@ -7,6 +7,8 @@ from typing import Callable
 
 from cpitd.reporter import CloneGroup, CloneReport
 
+ReadFn = Callable[[str], str | None]
+
 
 def _extract_lines(
     source: str,
@@ -21,7 +23,7 @@ def _extract_lines(
 def _group_matches(
     group: CloneGroup,
     patterns: tuple[str, ...],
-    read_fn: Callable[[str], str | None],
+    read_fn: ReadFn,
     cache: dict[str, str | None],
 ) -> bool:
     """Return True if any source line in either chunk matches any pattern."""
@@ -44,7 +46,7 @@ def _group_matches(
 def filter_reports(
     reports: list[CloneReport],
     suppress_patterns: tuple[str, ...],
-    read_fn: Callable[[str], str | None],
+    read_fn: ReadFn,
 ) -> list[CloneReport]:
     """Remove clone groups whose source lines match any suppress pattern.
 
