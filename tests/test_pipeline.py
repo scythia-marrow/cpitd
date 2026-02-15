@@ -58,6 +58,19 @@ class TestScan:
 
 
 class TestScanWithSuppression:
+    def test_abc_fixtures_detected_without_suppression(self):
+        config = Config(min_tokens=5)
+        reports = scan(config, (FIXTURES,))
+        abc_pair_found = any(
+            "abc_a.py" in r.file_a and "abc_b.py" in r.file_b
+            or "abc_b.py" in r.file_a and "abc_a.py" in r.file_b
+            for r in reports
+        )
+        assert abc_pair_found, (
+            f"abc_a/abc_b should be detected as clones without suppression, "
+            f"got: {[(r.file_a, r.file_b) for r in reports]}"
+        )
+
     def test_suppress_abstractmethod_clones(self):
         config = Config(
             min_tokens=5,
