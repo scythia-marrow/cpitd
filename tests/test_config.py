@@ -122,6 +122,14 @@ class TestValueValidation:
         with pytest.raises(ConfigFileError, match="must be a list of strings"):
             self._load(tmp_path, 'languages = "python"')
 
+    def test_suppress_parsed(self, tmp_path: Path) -> None:
+        result = self._load(tmp_path, 'suppress = ["*@abstractmethod*"]')
+        assert result == {"suppress_patterns": ("*@abstractmethod*",)}
+
+    def test_suppress_non_list_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigFileError, match="must be a list of strings"):
+            self._load(tmp_path, 'suppress = "*@abstractmethod*"')
+
 
 # ---------------------------------------------------------------------------
 # build_config
@@ -161,6 +169,13 @@ class TestBuildConfig:
     def test_tuple_fields_file_only(self) -> None:
         cfg = build_config({}, {"languages": ("python",)})
         assert cfg.languages == ("python",)
+
+    def test_suppress_patterns_append(self) -> None:
+        cfg = build_config(
+            {"suppress_patterns": ("*@override*",)},
+            {"suppress_patterns": ("*@abstractmethod*",)},
+        )
+        assert cfg.suppress_patterns == ("*@abstractmethod*", "*@override*")
 
     def test_full_merge(self) -> None:
         file_cfg = {
