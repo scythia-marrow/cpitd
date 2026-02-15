@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from cpitd.tokenizer import NormalizationLevel
+from cpitd.types import frozen_slots
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class Config:
     """Runtime configuration for a cpitd analysis run."""
 

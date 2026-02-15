@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import IntEnum
 
 import pygments.token as token_types
 from pygments import lex
 from pygments.lexers import get_lexer_for_filename, guess_lexer
+
+from cpitd.types import frozen_slots
 
 
 class NormalizationLevel(IntEnum):
@@ -18,7 +19,7 @@ class NormalizationLevel(IntEnum):
     LITERALS = 2  # Normalize both identifiers and literals
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class Token:
     """A normalized source token with location info."""
 
@@ -76,6 +77,15 @@ def _is_subtype(ttype, parent_set):
     return any(ttype is parent or ttype in parent for parent in parent_set)
 
 
+def _advance_position(
+    line: int, col: int, value: str, newlines: int
+) -> tuple[int, int]:
+    """Update line/column tracking after consuming a token value."""
+    if newlines:
+        return line + newlines, len(value.rsplit("\n", 1)[-1])
+    return line, col + len(value)
+
+
 def _normalize_value(ttype, value, level):
     """Return the normalized token value based on normalization level."""
     if level >= NormalizationLevel.IDENTIFIERS and _is_subtype(
@@ -113,24 +123,12 @@ def tokenize(
     col = 0
 
     for ttype, value in lex(source, lexer):
-        # Track position
         newlines = value.count("\n")
 
-        if _is_subtype(ttype, _SKIP_TYPES):
-            if newlines:
-                line += newlines
-                col = len(value.rsplit("\n", 1)[-1])
-            else:
-                col += len(value)
-            continue
+        if not _is_subtype(ttype, _SKIP_TYPES):
+            normalized = _normalize_value(ttype, value, level)
+            tokens.append(Token(value=normalized, line=line, column=col))
 
-        normalized = _normalize_value(ttype, value, level)
-        tokens.append(Token(value=normalized, line=line, column=col))
-
-        if newlines:
-            line += newlines
-            col = len(value.rsplit("\n", 1)[-1])
-        else:
-            col += len(value)
+        line, col = _advance_position(line, col, value, newlines)
 
     return tokens

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import TextIO
 
 from cpitd.indexer import CloneMatch
+from cpitd.types import frozen_slots
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class CloneGroup:
     """A contiguous range of cloned lines between two locations."""
 
@@ -22,7 +22,7 @@ class CloneGroup:
     token_count: int
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class CloneReport:
     """All clone groups between two file locations."""
 

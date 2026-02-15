@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Copy Paste Is The Devil — language-agnostic code clone detection"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 authors = [
     { name = "cpitd contributors" },
 ]
@@ -18,7 +18,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
@@ -34,6 +34,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "black>=24.0",
+    "pre-commit>=3.0",
     "sphinx>=7.2",
     "sphinx-rtd-theme>=2.0",
 ]
