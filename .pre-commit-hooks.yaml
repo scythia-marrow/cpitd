@@ -1,0 +1,13 @@
+- id: cpitd
+  name: cpitd (clone detection — staged files)
+  entry: cpitd
+  language: python
+  types: [file]
+  pass_filenames: true
+
+- id: cpitd-full
+  name: cpitd (clone detection — full scan)
+  entry: cpitd
+  language: python
+  types: [file]
+  pass_filenames: false

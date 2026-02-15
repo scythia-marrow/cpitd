@@ -11,10 +11,11 @@ from cpitd.discovery import discover_files
 from cpitd.indexer import LineHashIndex
 from cpitd.reporter import CloneReport, aggregate_clone_matches, format_human, format_json
 from cpitd.tokenizer import NormalizationLevel, tokenize
+from cpitd.types import Paths
 from cpitd.winnowing import build_hash_tree, hash_lines
 
 
-def scan(config: Config, paths: tuple[str, ...]) -> list[CloneReport]:
+def scan(config: Config, paths: Paths) -> list[CloneReport]:
     """Run the full clone detection pipeline.
 
     Args:
@@ -52,7 +53,7 @@ def scan(config: Config, paths: tuple[str, ...]) -> list[CloneReport]:
 
 def scan_and_report(
     config: Config,
-    paths: tuple[str, ...],
+    paths: Paths,
     out: TextIO = sys.stdout,
 ) -> list[CloneReport]:
     """Run scan and write formatted output.

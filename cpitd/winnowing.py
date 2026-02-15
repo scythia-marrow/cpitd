@@ -7,10 +7,10 @@ and a line-based hash tree for detecting copy-pasted code regions.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import Sequence
 
 from cpitd.tokenizer import Token
+from cpitd.types import frozen_slots
 
 # Algorithm internals — not exposed as CLI options.
 _K_GRAM_SIZE = 5
@@ -18,7 +18,7 @@ _WINDOW_SIZE = 4
 _MAX_TREE_LEVEL = 8  # 2^8 = 256 lines max group
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class Fingerprint:
     """A positional hash fingerprint from the winnowing algorithm."""
 
@@ -26,6 +26,16 @@ class Fingerprint:
     line: int
     column: int
     token_index: int
+
+
+def _make_fingerprint(
+    tokens: Sequence[Token], idx: int, hash_value: int
+) -> Fingerprint:
+    """Build a Fingerprint from a token index and its hash."""
+    t = tokens[idx]
+    return Fingerprint(
+        hash_value=hash_value, line=t.line, column=t.column, token_index=idx
+    )
 
 
 def _hash_kgram(tokens: Sequence[Token], start: int, k: int) -> int:
@@ -62,15 +72,7 @@ def fingerprint(
     if num_kgrams < window_size:
         # Not enough k-grams for a full window; take the minimum
         min_idx = min(range(num_kgrams), key=lambda i: kgram_hashes[i])
-        t = tokens[min_idx]
-        return [
-            Fingerprint(
-                hash_value=kgram_hashes[min_idx],
-                line=t.line,
-                column=t.column,
-                token_index=min_idx,
-            )
-        ]
+        return [_make_fingerprint(tokens, min_idx, kgram_hashes[min_idx])]
 
     selected: list[Fingerprint] = []
     prev_selected_idx = -1
@@ -87,15 +89,7 @@ def fingerprint(
                 min_hash = kgram_hashes[i]
 
         if min_idx != prev_selected_idx:
-            t = tokens[min_idx]
-            selected.append(
-                Fingerprint(
-                    hash_value=min_hash,
-                    line=t.line,
-                    column=t.column,
-                    token_index=min_idx,
-                )
-            )
+            selected.append(_make_fingerprint(tokens, min_idx, min_hash))
             prev_selected_idx = min_idx
 
     return selected
@@ -106,7 +100,7 @@ def fingerprint(
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class LineHash:
     """Hash of a single source line's tokens."""
 
@@ -115,7 +109,7 @@ class LineHash:
     token_count: int
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class HashTreeNode:
     """A node in the binary hash tree covering a contiguous range of lines."""
 

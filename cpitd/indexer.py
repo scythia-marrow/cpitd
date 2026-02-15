@@ -9,12 +9,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from cpitd.types import frozen_slots
 from cpitd.winnowing import HashTreeNode
 
 _MAX_BUCKET_SIZE = 100  # skip trivial-line buckets (e.g. "}", "pass")
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class NodeLocation:
     """A hash-tree node tied to its source file."""
 
@@ -22,7 +23,7 @@ class NodeLocation:
     node: HashTreeNode
 
 
-@dataclass(frozen=True, slots=True)
+@frozen_slots
 class CloneMatch:
     """Two source locations sharing a tree-node hash."""
 

@@ -8,9 +8,11 @@ from pathlib import Path
 from pygments.lexers import get_lexer_for_filename
 from pygments.util import ClassNotFound
 
+from cpitd.types import Paths
+
 
 def discover_files(
-    paths: tuple[str, ...],
+    paths: Paths,
     *,
     ignore_patterns: tuple[str, ...] = (),
     languages: tuple[str, ...] = (),

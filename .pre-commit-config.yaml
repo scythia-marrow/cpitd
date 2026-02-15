@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: cpitd-clone-detection
+        name: cpitd (clone detection)
+        entry: cpitd cpitd/ --ignore "tests/fixtures/*"
+        language: system
+        pass_filenames: false
+        always_run: true
