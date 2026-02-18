@@ -6,14 +6,10 @@ A static code analysis tool that rakes you over the coals for using copy/paste. 
 
 ## Installation
 
-```bash
-pip install cpitd
-```
-
 For development (linting, tests, docs):
 
 ```bash
-git clone <repo>
+git clone https://github.com/scythia-marrow/cpitd.git
 cd cpitd
 python -m venv venv
 source venv/bin/activate
