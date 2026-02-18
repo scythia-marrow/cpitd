@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: cpitd-clone-detection
         name: cpitd (clone detection)
-        entry: cpitd cpitd/ --ignore "tests/fixtures/*"
+        entry: cpitd cpitd/ --ignore "tests/fixtures/*" --suppress "*@protocol_impl*"
         language: system
         pass_filenames: false
         always_run: true

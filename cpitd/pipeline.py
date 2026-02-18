@@ -8,7 +8,7 @@ from typing import TextIO
 
 from cpitd.config import Config
 from cpitd.discovery import discover_files
-from cpitd.filter import filter_reports
+from cpitd.filter import build_filter_stages, run_filters
 from cpitd.indexer import LineHashIndex
 from cpitd.reporter import CloneReport, aggregate_clone_matches, format_human, format_json
 from cpitd.tokenizer import NormalizationLevel, tokenize
@@ -50,8 +50,9 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
 
     matches = index.find_clones()
     reports = aggregate_clone_matches(matches)
-    if config.suppress_patterns:
-        reports = filter_reports(reports, config.suppress_patterns, _read_file_str)
+    stages = build_filter_stages(config)
+    if stages:
+        reports = run_filters(reports, stages, _read_file_str)
     return reports
 
 
