@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Add detailed similarity metrics (#18)
 - Improve error handling (#16)
 - Remove CLAUDE.md from git tracking (#27)
 - Add sibling-aware clone suppression for abstract method implementations (#29)
