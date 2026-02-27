@@ -103,6 +103,28 @@ class TestScanWithSuppression:
         assert clone_pair_found, f"Expected clone_a/clone_b pair, got: {[(r.file_a, r.file_b) for r in reports]}"
 
 
+class TestSimilarityMetrics:
+    def test_reports_include_similarity_pct(self):
+        config = Config(min_tokens=5)
+        reports = scan(config, (FIXTURES,))
+        for r in reports:
+            if "clone_a.py" in r.file_a and "clone_b.py" in r.file_b:
+                assert r.total_cloned_tokens > 0
+                assert r.similarity_pct > 0
+                break
+        else:
+            raise AssertionError("Expected clone_a/clone_b pair in reports")
+
+    def test_json_output_includes_similarity(self):
+        config = Config(min_tokens=5, output_format="json")
+        out = io.StringIO()
+        scan_and_report(config, (FIXTURES,), out=out)
+        data = json.loads(out.getvalue())
+        for cr in data["clone_reports"]:
+            assert "similarity_pct" in cr
+            assert "total_cloned_tokens" in cr
+
+
 class TestScanAndReport:
     def test_human_output(self):
         config = Config(min_tokens=5, output_format="human")

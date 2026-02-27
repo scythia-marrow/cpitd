@@ -30,6 +30,8 @@ class CloneReport:
     file_b: str
     groups: list[CloneGroup]
     total_cloned_lines: int
+    total_cloned_tokens: int = 0
+    similarity_pct: float = 0.0
 
 
 def _normalize_file_pair(
@@ -147,6 +149,7 @@ def aggregate_clone_matches(
     matches: list[CloneMatch],
     *,
     min_group_tokens: int = 10,
+    file_token_counts: dict[str, int] | None = None,
 ) -> list[CloneReport]:
     """Group raw clone matches into per-file-pair reports.
 
@@ -157,10 +160,14 @@ def aggregate_clone_matches(
     Args:
         matches: Raw matches from the indexer.
         min_group_tokens: Drop groups with fewer tokens.
+        file_token_counts: Optional mapping of file path to total token count,
+            used to compute similarity_pct on each report.
 
     Returns:
         Aggregated reports, one per unique file pair.
     """
+    counts = file_token_counts or {}
+
     # Bucket by normalized file pair
     by_pair: dict[tuple[str, str], list[CloneMatch]] = defaultdict(list)
 
@@ -191,12 +198,24 @@ def aggregate_clone_matches(
             continue
 
         total_lines = sum(g.line_count for g in groups)
+        total_tokens = sum(g.token_count for g in groups)
+
+        # similarity_pct = cloned tokens / smaller file's total tokens
+        smaller_file_tokens = min(counts.get(file_a, 0), counts.get(file_b, 0))
+        similarity = (
+            round(total_tokens / smaller_file_tokens * 100, 1)
+            if smaller_file_tokens > 0
+            else 0.0
+        )
+
         reports.append(
             CloneReport(
                 file_a=file_a,
                 file_b=file_b,
                 groups=groups,
                 total_cloned_lines=total_lines,
+                total_cloned_tokens=total_tokens,
+                similarity_pct=similarity,
             )
         )
 
@@ -218,7 +237,11 @@ def format_human(reports: list[CloneReport], out: TextIO) -> None:
                 f" <-> Lines {g.lines_b[0]}-{g.lines_b[1]}"
                 f" ({g.line_count} lines, {g.token_count} tokens)\n"
             )
-        out.write(f"    Total cloned lines: {report.total_cloned_lines}\n\n")
+        similarity = f"  ({report.similarity_pct}% similar)" if report.similarity_pct else ""
+        out.write(
+            f"    Total: {report.total_cloned_lines} cloned lines,"
+            f" {report.total_cloned_tokens} tokens{similarity}\n\n"
+        )
 
 
 def format_json(reports: list[CloneReport], out: TextIO) -> None:
@@ -229,6 +252,8 @@ def format_json(reports: list[CloneReport], out: TextIO) -> None:
                 "file_a": r.file_a,
                 "file_b": r.file_b,
                 "total_cloned_lines": r.total_cloned_lines,
+                "total_cloned_tokens": r.total_cloned_tokens,
+                "similarity_pct": r.similarity_pct,
                 "groups": [
                     {
                         "lines_a": list(g.lines_a),

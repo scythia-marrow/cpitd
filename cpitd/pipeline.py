@@ -42,6 +42,7 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
 
     level = NormalizationLevel(config.normalize)
     index = LineHashIndex()
+    file_token_counts: dict[str, int] = {}
     skipped = 0
 
     for file_path in files:
@@ -60,15 +61,18 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
         if len(tokens) < config.min_tokens:
             continue
 
+        file_key = str(file_path)
+        file_token_counts[file_key] = len(tokens)
+
         line_hashes = hash_lines(tokens)
         tree = build_hash_tree(line_hashes)
-        index.add(str(file_path), tree)
+        index.add(file_key, tree)
 
     if skipped:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
 
     matches = index.find_clones()
-    reports = aggregate_clone_matches(matches)
+    reports = aggregate_clone_matches(matches, file_token_counts=file_token_counts)
     stages = build_filter_stages(config)
     if stages:
         reports = run_filters(reports, stages, _read_file_str)
