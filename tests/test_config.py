@@ -130,6 +130,14 @@ class TestValueValidation:
         with pytest.raises(ConfigFileError, match="must be a list of strings"):
             self._load(tmp_path, 'suppress = "*@abstractmethod*"')
 
+    def test_verbose_parsed(self, tmp_path: Path) -> None:
+        result = self._load(tmp_path, "verbose = true")
+        assert result == {"verbose": True}
+
+    def test_verbose_non_bool_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ConfigFileError, match="must be a boolean"):
+            self._load(tmp_path, 'verbose = "yes"')
+
 
 # ---------------------------------------------------------------------------
 # build_config
