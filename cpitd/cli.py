@@ -10,10 +10,23 @@ from cpitd.pipeline import scan_and_report
 from cpitd.tokenizer import NormalizationLevel
 
 
-_CLI_TUPLE_RENAMES: dict[str, str] = {
-    "ignore": "ignore_patterns",
-    "suppress": "suppress_patterns",
-}
+def _expand_cli_param(name: str, value: object) -> tuple[str, object]:
+    """Map a CLI parameter name and value to its Config-compatible equivalent.
+
+    Handles renaming short CLI names (e.g. ``--ignore`` → ``ignore_patterns``)
+    and converting tuple-typed multi-value options.
+
+    Returns:
+        A (config_field_name, converted_value) pair.
+    """
+    if name == "normalize":
+        return name, NormalizationLevel(value)
+    if name in ("ignore", "suppress", "languages"):
+        config_key = {"ignore": "ignore_patterns", "suppress": "suppress_patterns"}.get(
+            name, name
+        )
+        return config_key, tuple(value)
+    return name, value
 
 
 def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, object]:
@@ -22,13 +35,8 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
     for param_name, value in kwargs.items():
         source = ctx.get_parameter_source(param_name)
         if source is click.core.ParameterSource.COMMANDLINE:
-            if param_name == "normalize":
-                explicit[param_name] = NormalizationLevel(value)
-            elif param_name in _CLI_TUPLE_RENAMES or param_name == "languages":
-                config_key = _CLI_TUPLE_RENAMES.get(param_name, param_name)
-                explicit[config_key] = tuple(value)
-            else:
-                explicit[param_name] = value
+            key, converted = _expand_cli_param(param_name, value)
+            explicit[key] = converted
     return explicit
 
 
@@ -120,7 +128,7 @@ def main(
         reports = scan_and_report(config, paths, out=sys.stdout)
     except KeyboardInterrupt:
         raise SystemExit(130)
-    except Exception as exc:
-        raise click.ClickException(f"unexpected error during scan: {exc}") from None
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(f"scan failed: {exc}") from None
 
     raise SystemExit(1 if reports else 0)
