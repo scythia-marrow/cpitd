@@ -10,6 +10,12 @@ from cpitd.pipeline import scan_and_report
 from cpitd.tokenizer import NormalizationLevel
 
 
+_CLI_TUPLE_RENAMES: dict[str, str] = {
+    "ignore": "ignore_patterns",
+    "suppress": "suppress_patterns",
+}
+
+
 def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, object]:
     """Return only the kwargs whose values were explicitly set on the command line."""
     explicit: dict[str, object] = {}
@@ -18,14 +24,9 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
         if source is click.core.ParameterSource.COMMANDLINE:
             if param_name == "normalize":
                 explicit[param_name] = NormalizationLevel(value)
-            elif param_name in {"ignore", "languages", "suppress"}:
-                # Map CLI names to Config field names, convert to tuple
-                field_map = {
-                    "ignore": "ignore_patterns",
-                    "languages": "languages",
-                    "suppress": "suppress_patterns",
-                }
-                explicit[field_map[param_name]] = tuple(value)
+            elif param_name in _CLI_TUPLE_RENAMES or param_name == "languages":
+                config_key = _CLI_TUPLE_RENAMES.get(param_name, param_name)
+                explicit[config_key] = tuple(value)
             else:
                 explicit[param_name] = value
     return explicit
@@ -71,6 +72,12 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
     help="Glob patterns to suppress clone groups (repeatable). "
     "If any source line in a clone chunk matches, the group is suppressed.",
 )
+@click.option(
+    "--verbose",
+    is_flag=True,
+    default=False,
+    help="Print diagnostic warnings to stderr (skipped files, etc.).",
+)
 @click.pass_context
 def main(
     ctx,
@@ -81,6 +88,7 @@ def main(
     ignore,
     languages,
     suppress,
+    verbose,
 ):
     """Detect copy-pasted code clones across a codebase.
 
@@ -98,6 +106,7 @@ def main(
         ignore=ignore,
         languages=languages,
         suppress=suppress,
+        verbose=verbose,
     )
 
     try:
@@ -107,5 +116,11 @@ def main(
 
     config = build_config(cli_overrides, file_config)
 
-    reports = scan_and_report(config, paths, out=sys.stdout)
+    try:
+        reports = scan_and_report(config, paths, out=sys.stdout)
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except Exception as exc:
+        raise click.ClickException(f"unexpected error during scan: {exc}") from None
+
     raise SystemExit(1 if reports else 0)

@@ -20,6 +20,7 @@ class Config:
     ignore_patterns: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
     suppress_patterns: tuple[str, ...] = ()
+    verbose: bool = False
 
 
 class ConfigFileError(Exception):
@@ -33,6 +34,7 @@ _TOML_KEY_TO_FIELD: dict[str, str] = {
     "ignore": "ignore_patterns",
     "languages": "languages",
     "suppress": "suppress_patterns",
+    "verbose": "verbose",
 }
 
 _TUPLE_FIELDS = frozenset({"ignore_patterns", "languages", "suppress_patterns"})
@@ -70,6 +72,13 @@ def _convert_value(toml_key: str, field_name: str, value: object) -> object:
         if value not in {"human", "json"}:
             raise ConfigFileError(
                 f"[tool.cpitd] '{toml_key}' must be 'human' or 'json', got '{value}'"
+            )
+        return value
+
+    if field_name == "verbose":
+        if not isinstance(value, bool):
+            raise ConfigFileError(
+                f"[tool.cpitd] '{toml_key}' must be a boolean, got {type(value).__name__}"
             )
         return value
 

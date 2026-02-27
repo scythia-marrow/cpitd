@@ -2,7 +2,9 @@
 
 import io
 import json
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 from cpitd.config import Config
 from cpitd.pipeline import scan, scan_and_report
@@ -126,3 +128,70 @@ class TestScanAndReport:
         reports = scan_and_report(config, (str(tmp_path),), out=out)
         assert reports == []
         assert "No clones detected" in out.getvalue()
+
+
+class TestErrorHandling:
+    def test_unreadable_file_skipped_with_verbose_warning(self, tmp_path, capsys):
+        """Files that can't be read are skipped and warned about in verbose mode."""
+        src = tmp_path / "good.py"
+        src.write_text("x = 1\ny = 2\n")
+        bad = tmp_path / "bad.py"
+        bad.write_text("z = 3\n")
+        bad.chmod(0o000)
+
+        config = Config(min_tokens=5, verbose=True)
+        try:
+            scan(config, (str(tmp_path),))
+        finally:
+            bad.chmod(0o644)
+
+        stderr = capsys.readouterr().err
+        assert "skipping" in stderr
+        assert "bad.py" in stderr
+
+    def test_unreadable_file_silent_without_verbose(self, tmp_path, capsys):
+        """Without --verbose, unreadable files are silently skipped."""
+        bad = tmp_path / "bad.py"
+        bad.write_text("z = 3\n")
+        bad.chmod(0o000)
+
+        config = Config(min_tokens=5, verbose=False)
+        try:
+            scan(config, (str(tmp_path),))
+        finally:
+            bad.chmod(0o644)
+
+        stderr = capsys.readouterr().err
+        assert stderr == ""
+
+    def test_tokenizer_error_skipped_gracefully(self, tmp_path, capsys):
+        """If the tokenizer raises, the file is skipped with a warning."""
+        src = tmp_path / "example.py"
+        src.write_text("x = 1\n" * 20)
+
+        config = Config(min_tokens=5, verbose=True)
+
+        with patch("cpitd.pipeline.tokenize", side_effect=RuntimeError("lex boom")):
+            reports = scan(config, (str(tmp_path),))
+
+        assert reports == []
+        stderr = capsys.readouterr().err
+        assert "tokenizer error" in stderr
+        assert "lex boom" in stderr
+
+    def test_skipped_count_reported_in_verbose(self, tmp_path, capsys):
+        """Verbose mode reports total count of skipped files."""
+        for name in ("a.py", "b.py"):
+            f = tmp_path / name
+            f.write_text("x = 1\n")
+            f.chmod(0o000)
+
+        config = Config(min_tokens=5, verbose=True)
+        try:
+            scan(config, (str(tmp_path),))
+        finally:
+            for name in ("a.py", "b.py"):
+                (tmp_path / name).chmod(0o644)
+
+        stderr = capsys.readouterr().err
+        assert "2 file(s) skipped" in stderr
