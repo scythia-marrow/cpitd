@@ -11,3 +11,4 @@ build/
 htmlcov/
 docs/_build/
 CLAUDE.md
+scripts/

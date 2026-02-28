@@ -6,6 +6,14 @@ A static code analysis tool that rakes you over the coals for using copy/paste. 
 
 ## Installation
 
+```bash
+pip install cpitd
+```
+
+Requires Python 3.10+.
+
+### Development
+
 For development (linting, tests, docs):
 
 ```bash
