@@ -16,6 +16,8 @@ ReadFn = Callable[[str], str | None]
 def protocol_impl(fn: F) -> F:
     """Mark a method as a protocol implementation (identity decorator)."""
     return fn
+
+
 Location = tuple[str, tuple[int, int]]  # (file_path, (start_line, end_line))
 
 
@@ -60,12 +62,22 @@ def _filter_groups(
         groups = [g for g in report.groups if keep(g)]
         if not groups:
             continue
+        total_tokens = sum(g.token_count for g in groups)
+        # Scale similarity proportionally to the remaining tokens
+        if report.total_cloned_tokens > 0:
+            similarity = round(
+                report.similarity_pct * total_tokens / report.total_cloned_tokens, 1
+            )
+        else:
+            similarity = 0.0
         filtered.append(
             CloneReport(
                 file_a=report.file_a,
                 file_b=report.file_b,
                 groups=groups,
                 total_cloned_lines=sum(g.line_count for g in groups),
+                total_cloned_tokens=total_tokens,
+                similarity_pct=similarity,
             )
         )
     return filtered
@@ -88,7 +100,9 @@ class FilterContext:
 class FilterStage(Protocol):
     """Protocol for a single filter pass."""
 
-    def __call__(self, reports: list[CloneReport], ctx: FilterContext) -> list[CloneReport]: ...
+    def __call__(
+        self, reports: list[CloneReport], ctx: FilterContext
+    ) -> list[CloneReport]: ...
 
 
 class PatternMatchStage:
@@ -103,7 +117,9 @@ class PatternMatchStage:
         self._patterns = suppress_patterns
 
     def _group_matches(
-        self, group: CloneGroup, ctx: FilterContext,
+        self,
+        group: CloneGroup,
+        ctx: FilterContext,
     ) -> bool:
         for file_path, line_range in (
             (group.file_a, group.lines_a),
@@ -121,7 +137,9 @@ class PatternMatchStage:
         return False
 
     @protocol_impl
-    def __call__(self, reports: list[CloneReport], ctx: FilterContext) -> list[CloneReport]:
+    def __call__(
+        self, reports: list[CloneReport], ctx: FilterContext
+    ) -> list[CloneReport]:
         suppressed: set[Location] = set()
 
         def keep(g: CloneGroup) -> bool:
@@ -140,7 +158,9 @@ class SiblingStage:
     """Suppress groups where both sides overlap with previously-suppressed locations."""
 
     @protocol_impl
-    def __call__(self, reports: list[CloneReport], ctx: FilterContext) -> list[CloneReport]:
+    def __call__(
+        self, reports: list[CloneReport], ctx: FilterContext
+    ) -> list[CloneReport]:
         locs = ctx.suppressed_locations
         return _filter_groups(
             reports,

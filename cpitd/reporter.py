@@ -34,9 +34,7 @@ class CloneReport:
     similarity_pct: float = 0.0
 
 
-def _normalize_file_pair(
-    file_a: str, file_b: str
-) -> tuple[str, str, bool]:
+def _normalize_file_pair(file_a: str, file_b: str) -> tuple[str, str, bool]:
     """Return (smaller, larger, swapped) for consistent ordering."""
     if file_a <= file_b:
         return file_a, file_b, False
@@ -172,9 +170,7 @@ def aggregate_clone_matches(
     by_pair: dict[tuple[str, str], list[CloneMatch]] = defaultdict(list)
 
     for m in matches:
-        fa, fb, swapped = _normalize_file_pair(
-            m.left.file_path, m.right.file_path
-        )
+        fa, fb, swapped = _normalize_file_pair(m.left.file_path, m.right.file_path)
         if swapped:
             m = CloneMatch(
                 left=m.right, right=m.left, level=m.level, shared_hash=m.shared_hash
@@ -237,7 +233,9 @@ def format_human(reports: list[CloneReport], out: TextIO) -> None:
                 f" <-> Lines {g.lines_b[0]}-{g.lines_b[1]}"
                 f" ({g.line_count} lines, {g.token_count} tokens)\n"
             )
-        similarity = f"  ({report.similarity_pct}% similar)" if report.similarity_pct else ""
+        similarity = (
+            f"  ({report.similarity_pct}% similar)" if report.similarity_pct else ""
+        )
         out.write(
             f"    Total: {report.total_cloned_lines} cloned lines,"
             f" {report.total_cloned_tokens} tokens{similarity}\n\n"

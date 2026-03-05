@@ -42,6 +42,17 @@ class TestScan:
         reports = scan(config, (FIXTURES,))
         assert reports == []
 
+    def test_min_tokens_filters_clone_groups(self):
+        """--min-tokens should filter clone groups, not just whole files."""
+        low = Config(min_tokens=5)
+        high = Config(min_tokens=200)
+        reports_low = scan(low, (FIXTURES,))
+        reports_high = scan(high, (FIXTURES,))
+        # With a high threshold, small clone groups should be filtered out
+        low_groups = sum(len(r.groups) for r in reports_low)
+        high_groups = sum(len(r.groups) for r in reports_high)
+        assert low_groups > high_groups
+
     def test_normalization_affects_results(self):
         config_exact = Config(
             min_tokens=5,
@@ -64,8 +75,10 @@ class TestScanWithSuppression:
         config = Config(min_tokens=5)
         reports = scan(config, (FIXTURES,))
         abc_pair_found = any(
-            "abc_a.py" in r.file_a and "abc_b.py" in r.file_b
-            or "abc_b.py" in r.file_a and "abc_a.py" in r.file_b
+            "abc_a.py" in r.file_a
+            and "abc_b.py" in r.file_b
+            or "abc_b.py" in r.file_a
+            and "abc_a.py" in r.file_b
             for r in reports
         )
         assert abc_pair_found, (
@@ -84,8 +97,10 @@ class TestScanWithSuppression:
         for r in reports:
             pair = (r.file_a, r.file_b)
             assert not (
-                "abc_a.py" in pair[0] and "abc_b.py" in pair[1]
-                or "abc_b.py" in pair[0] and "abc_a.py" in pair[1]
+                "abc_a.py" in pair[0]
+                and "abc_b.py" in pair[1]
+                or "abc_b.py" in pair[0]
+                and "abc_a.py" in pair[1]
             ), f"abc_a/abc_b pair should be suppressed, got: {pair}"
 
     def test_suppress_does_not_affect_real_clones(self):
@@ -96,11 +111,15 @@ class TestScanWithSuppression:
         reports = scan(config, (FIXTURES,))
         # clone_a.py / clone_b.py should still be detected
         clone_pair_found = any(
-            "clone_a.py" in r.file_a and "clone_b.py" in r.file_b
-            or "clone_b.py" in r.file_a and "clone_a.py" in r.file_b
+            "clone_a.py" in r.file_a
+            and "clone_b.py" in r.file_b
+            or "clone_b.py" in r.file_a
+            and "clone_a.py" in r.file_b
             for r in reports
         )
-        assert clone_pair_found, f"Expected clone_a/clone_b pair, got: {[(r.file_a, r.file_b) for r in reports]}"
+        assert (
+            clone_pair_found
+        ), f"Expected clone_a/clone_b pair, got: {[(r.file_a, r.file_b) for r in reports]}"
 
 
 class TestSimilarityMetrics:

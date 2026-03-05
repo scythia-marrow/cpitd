@@ -10,7 +10,12 @@ from cpitd.config import Config
 from cpitd.discovery import discover_files
 from cpitd.filter import build_filter_stages, run_filters
 from cpitd.indexer import LineHashIndex
-from cpitd.reporter import CloneReport, aggregate_clone_matches, format_human, format_json
+from cpitd.reporter import (
+    CloneReport,
+    aggregate_clone_matches,
+    format_human,
+    format_json,
+)
 from cpitd.tokenizer import NormalizationLevel, tokenize
 from cpitd.types import Paths
 from cpitd.winnowing import build_hash_tree, hash_lines
@@ -53,7 +58,7 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
 
         try:
             tokens = tokenize(source, filename=file_path.name, level=level)
-        except Exception as exc:
+        except (ValueError, TypeError, LookupError, RuntimeError) as exc:
             _warn(f"skipping {file_path}: tokenizer error: {exc}", verbose=verbose)
             skipped += 1
             continue
@@ -72,7 +77,11 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
 
     matches = index.find_clones()
-    reports = aggregate_clone_matches(matches, file_token_counts=file_token_counts)
+    reports = aggregate_clone_matches(
+        matches,
+        min_group_tokens=config.min_tokens,
+        file_token_counts=file_token_counts,
+    )
     stages = build_filter_stages(config)
     if stages:
         reports = run_filters(reports, stages, _read_file_str)

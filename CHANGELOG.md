@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add default scan of current directory when no paths are provided (#6)
 
 ### Fixed
+- Fix --min-tokens to filter clone groups instead of only whole files (#32)
+- Fix filtered clone reports losing token counts and similarity metrics (#32)
 
 ### Changed
 - Refactor README for external users with install, pre-commit, and per-language suppress guides (#31)

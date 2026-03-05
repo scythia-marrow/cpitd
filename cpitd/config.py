@@ -103,9 +103,7 @@ def _parse_toml_section(section: dict[str, Any]) -> dict[str, object]:
     for toml_key, value in section.items():
         field_name = _TOML_KEY_TO_FIELD.get(toml_key)
         if field_name is None:
-            raise ConfigFileError(
-                f"[tool.cpitd] unknown key '{toml_key}'"
-            )
+            raise ConfigFileError(f"[tool.cpitd] unknown key '{toml_key}'")
         result[field_name] = _convert_value(toml_key, field_name, value)
     return result
 
@@ -145,8 +143,11 @@ def build_config(
     for key, cli_val in cli_overrides.items():
         if key in _TUPLE_FIELDS and key in file_config:
             file_val = file_config[key]
-            assert isinstance(file_val, tuple)
-            assert isinstance(cli_val, tuple)
+            if not isinstance(file_val, tuple) or not isinstance(cli_val, tuple):
+                raise ConfigFileError(
+                    f"expected tuple values for '{key}', "
+                    f"got {type(file_val).__name__} and {type(cli_val).__name__}"
+                )
             merged[key] = file_val + cli_val
         else:
             merged[key] = cli_val

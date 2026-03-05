@@ -47,7 +47,7 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
     "--min-tokens",
     default=50,
     show_default=True,
-    help="Minimum token sequence length to report.",
+    help="Minimum pygments token count to report a clone group.",
 )
 @click.option(
     "--normalize",

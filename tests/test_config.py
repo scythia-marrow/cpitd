@@ -14,7 +14,6 @@ from cpitd.config import (
 )
 from cpitd.tokenizer import NormalizationLevel
 
-
 # ---------------------------------------------------------------------------
 # load_file_config
 # ---------------------------------------------------------------------------
@@ -39,9 +38,9 @@ class TestLoadFileConfig:
     def test_valid_full_section(self, tmp_path: Path) -> None:
         toml = tmp_path / "pyproject.toml"
         toml.write_text(
-            '[tool.cpitd]\n'
-            'min-tokens = 30\n'
-            'normalize = 1\n'
+            "[tool.cpitd]\n"
+            "min-tokens = 30\n"
+            "normalize = 1\n"
             'format = "json"\n'
             'ignore = ["tests/*", "vendor/*"]\n'
             'languages = ["python"]\n'
