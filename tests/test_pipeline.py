@@ -75,8 +75,10 @@ class TestScanWithSuppression:
         config = Config(min_tokens=5)
         reports = scan(config, (FIXTURES,))
         abc_pair_found = any(
-            "abc_a.py" in r.file_a and "abc_b.py" in r.file_b
-            or "abc_b.py" in r.file_a and "abc_a.py" in r.file_b
+            "abc_a.py" in r.file_a
+            and "abc_b.py" in r.file_b
+            or "abc_b.py" in r.file_a
+            and "abc_a.py" in r.file_b
             for r in reports
         )
         assert abc_pair_found, (
@@ -95,8 +97,10 @@ class TestScanWithSuppression:
         for r in reports:
             pair = (r.file_a, r.file_b)
             assert not (
-                "abc_a.py" in pair[0] and "abc_b.py" in pair[1]
-                or "abc_b.py" in pair[0] and "abc_a.py" in pair[1]
+                "abc_a.py" in pair[0]
+                and "abc_b.py" in pair[1]
+                or "abc_b.py" in pair[0]
+                and "abc_a.py" in pair[1]
             ), f"abc_a/abc_b pair should be suppressed, got: {pair}"
 
     def test_suppress_does_not_affect_real_clones(self):
@@ -107,11 +111,15 @@ class TestScanWithSuppression:
         reports = scan(config, (FIXTURES,))
         # clone_a.py / clone_b.py should still be detected
         clone_pair_found = any(
-            "clone_a.py" in r.file_a and "clone_b.py" in r.file_b
-            or "clone_b.py" in r.file_a and "clone_a.py" in r.file_b
+            "clone_a.py" in r.file_a
+            and "clone_b.py" in r.file_b
+            or "clone_b.py" in r.file_a
+            and "clone_a.py" in r.file_b
             for r in reports
         )
-        assert clone_pair_found, f"Expected clone_a/clone_b pair, got: {[(r.file_a, r.file_b) for r in reports]}"
+        assert (
+            clone_pair_found
+        ), f"Expected clone_a/clone_b pair, got: {[(r.file_a, r.file_b) for r in reports]}"
 
 
 class TestSimilarityMetrics:

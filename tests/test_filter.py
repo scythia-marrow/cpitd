@@ -124,10 +124,16 @@ class TestFilterReports:
     def test_filtered_report_preserves_token_counts(self) -> None:
         """Filtering must recalculate total_cloned_tokens from remaining groups."""
         matching = _make_group(
-            lines_a=(1, 4), lines_b=(1, 4), line_count=4, token_count=30,
+            lines_a=(1, 4),
+            lines_b=(1, 4),
+            line_count=4,
+            token_count=30,
         )
         kept = _make_group(
-            lines_a=(5, 6), lines_b=(5, 6), line_count=2, token_count=15,
+            lines_a=(5, 6),
+            lines_b=(5, 6),
+            line_count=2,
+            token_count=15,
         )
         report = _make_report([matching, kept])
         result = filter_reports([report], ("*@abstractmethod*",), _read)
@@ -137,14 +143,23 @@ class TestFilterReports:
     def test_filtered_report_scales_similarity(self) -> None:
         """Filtering must proportionally scale similarity_pct."""
         matching = _make_group(
-            lines_a=(1, 4), lines_b=(1, 4), line_count=4, token_count=40,
+            lines_a=(1, 4),
+            lines_b=(1, 4),
+            line_count=4,
+            token_count=40,
         )
         kept = _make_group(
-            lines_a=(5, 6), lines_b=(5, 6), line_count=2, token_count=20,
+            lines_a=(5, 6),
+            lines_b=(5, 6),
+            line_count=2,
+            token_count=20,
         )
         report = CloneReport(
-            file_a="a.py", file_b="b.py", groups=[matching, kept],
-            total_cloned_lines=6, total_cloned_tokens=60,
+            file_a="a.py",
+            file_b="b.py",
+            groups=[matching, kept],
+            total_cloned_lines=6,
+            total_cloned_tokens=60,
             similarity_pct=60.0,
         )
         result = filter_reports([report], ("*@abstractmethod*",), _read)
@@ -155,9 +170,7 @@ class TestFilterReports:
     def test_multi_pattern_any_matches(self) -> None:
         group = _make_group(lines_a=(5, 6), lines_b=(5, 6), line_count=2)
         report = _make_report([group])
-        result = filter_reports(
-            [report], ("*@abstractmethod*", "*return 42*"), _read
-        )
+        result = filter_reports([report], ("*@abstractmethod*", "*return 42*"), _read)
         assert result == []
 
     def test_decorator_above_chunk_suppresses(self) -> None:
@@ -190,19 +203,28 @@ class TestSiblingSupression:
         """Two implementations of an abstract method should be suppressed
         when each was individually suppressed against the ABC."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_a.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_a.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         abc_vs_b = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         impl_vs_impl = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
 
         reports = [
@@ -217,14 +239,20 @@ class TestSiblingSupression:
         """A group is only sibling-suppressed when BOTH sides appeared in
         directly-suppressed groups. One side known is not enough."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_a.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_a.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         mixed = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="b.py", lines_b=(5, 5),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="b.py",
+            lines_b=(5, 5),
+            line_count=1,
+            token_count=10,
         )
 
         reports = [
@@ -239,19 +267,28 @@ class TestSiblingSupression:
         """Sibling suppression works when line ranges overlap but aren't
         exactly equal."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(4, 6),
-            file_b="impl_a.py", lines_b=(3, 5),
-            line_count=3, token_count=15,
+            file_a="abc.py",
+            lines_a=(4, 6),
+            file_b="impl_a.py",
+            lines_b=(3, 5),
+            line_count=3,
+            token_count=15,
         )
         abc_vs_b = _make_group(
-            file_a="abc.py", lines_a=(4, 6),
-            file_b="impl_b.py", lines_b=(3, 5),
-            line_count=3, token_count=15,
+            file_a="abc.py",
+            lines_a=(4, 6),
+            file_b="impl_b.py",
+            lines_b=(3, 5),
+            line_count=3,
+            token_count=15,
         )
         impl_vs_impl = _make_group(
-            file_a="impl_a.py", lines_a=(4, 5),
-            file_b="impl_b.py", lines_b=(4, 5),
-            line_count=2, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 5),
+            file_b="impl_b.py",
+            lines_b=(4, 5),
+            line_count=2,
+            token_count=10,
         )
 
         reports = [
@@ -266,24 +303,36 @@ class TestSiblingSupression:
         """Within a report, only sibling-suppressed groups are removed;
         unrelated groups survive."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_a.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_a.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         abc_vs_b = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         sibling = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         unrelated = _make_group(
-            file_a="impl_a.py", lines_a=(1, 1),
-            file_b="impl_b.py", lines_b=(1, 1),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(1, 1),
+            file_b="impl_b.py",
+            lines_b=(1, 1),
+            line_count=1,
+            token_count=10,
         )
 
         reports = [
@@ -303,13 +352,17 @@ class TestPatternMatchStageIsolation:
     def test_suppresses_matching_group(self) -> None:
         group = _make_group(lines_a=(1, 4), lines_b=(1, 4), line_count=4)
         report = _make_report([group])
-        result = run_filters([report], [PatternMatchStage(("*@abstractmethod*",))], _read)
+        result = run_filters(
+            [report], [PatternMatchStage(("*@abstractmethod*",))], _read
+        )
         assert result == []
 
     def test_keeps_non_matching_group(self) -> None:
         group = _make_group(lines_a=(5, 6), lines_b=(5, 6), line_count=2)
         report = _make_report([group])
-        result = run_filters([report], [PatternMatchStage(("*@abstractmethod*",))], _read)
+        result = run_filters(
+            [report], [PatternMatchStage(("*@abstractmethod*",))], _read
+        )
         assert len(result) == 1
         assert result[0].groups == [group]
 
@@ -328,9 +381,12 @@ class TestSiblingStageIsolation:
 
     def test_suppresses_when_both_sides_known(self) -> None:
         group = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         report = _make_report([group], file_a="impl_a.py", file_b="impl_b.py")
         ctx = FilterContext(read_fn=_read)
@@ -343,9 +399,12 @@ class TestSiblingStageIsolation:
 
     def test_keeps_when_one_side_unknown(self) -> None:
         group = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="b.py", lines_b=(5, 5),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="b.py",
+            lines_b=(5, 5),
+            line_count=1,
+            token_count=10,
         )
         report = _make_report([group], file_a="impl_a.py", file_b="b.py")
         ctx = FilterContext(read_fn=_read)
@@ -368,19 +427,28 @@ class TestStageComposition:
     def test_pattern_then_sibling_full_pipeline(self) -> None:
         """PatternMatchStage + SiblingStage together replicate filter_reports."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_a.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_a.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         abc_vs_b = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         impl_vs_impl = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
 
         reports = [
@@ -396,14 +464,20 @@ class TestStageComposition:
     def test_pattern_only_leaves_sibling_groups(self) -> None:
         """Without SiblingStage, impl-vs-impl groups survive."""
         abc_vs_a = _make_group(
-            file_a="abc.py", lines_a=(5, 5),
-            file_b="impl_a.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="abc.py",
+            lines_a=(5, 5),
+            file_b="impl_a.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
         impl_vs_impl = _make_group(
-            file_a="impl_a.py", lines_a=(4, 4),
-            file_b="impl_b.py", lines_b=(4, 4),
-            line_count=1, token_count=10,
+            file_a="impl_a.py",
+            lines_a=(4, 4),
+            file_b="impl_b.py",
+            lines_b=(4, 4),
+            line_count=1,
+            token_count=10,
         )
 
         reports = [
@@ -411,7 +485,9 @@ class TestStageComposition:
             _make_report([impl_vs_impl], file_a="impl_a.py", file_b="impl_b.py"),
         ]
 
-        result = run_filters(reports, [PatternMatchStage(("*@abstractmethod*",))], _read)
+        result = run_filters(
+            reports, [PatternMatchStage(("*@abstractmethod*",))], _read
+        )
         assert len(result) == 1
         assert result[0].groups == [impl_vs_impl]
 

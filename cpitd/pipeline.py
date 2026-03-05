@@ -10,7 +10,12 @@ from cpitd.config import Config
 from cpitd.discovery import discover_files
 from cpitd.filter import build_filter_stages, run_filters
 from cpitd.indexer import LineHashIndex
-from cpitd.reporter import CloneReport, aggregate_clone_matches, format_human, format_json
+from cpitd.reporter import (
+    CloneReport,
+    aggregate_clone_matches,
+    format_human,
+    format_json,
+)
 from cpitd.tokenizer import NormalizationLevel, tokenize
 from cpitd.types import Paths
 from cpitd.winnowing import build_hash_tree, hash_lines

@@ -103,9 +103,7 @@ def _parse_toml_section(section: dict[str, Any]) -> dict[str, object]:
     for toml_key, value in section.items():
         field_name = _TOML_KEY_TO_FIELD.get(toml_key)
         if field_name is None:
-            raise ConfigFileError(
-                f"[tool.cpitd] unknown key '{toml_key}'"
-            )
+            raise ConfigFileError(f"[tool.cpitd] unknown key '{toml_key}'")
         result[field_name] = _convert_value(toml_key, field_name, value)
     return result
 

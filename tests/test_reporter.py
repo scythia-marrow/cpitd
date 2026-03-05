@@ -214,12 +214,20 @@ class TestSimilarityMetrics:
 
     def test_human_output_no_similarity_when_zero(self):
         group = CloneGroup(
-            file_a="a.py", lines_a=(1, 5), file_b="b.py", lines_b=(1, 5),
-            line_count=5, token_count=30,
+            file_a="a.py",
+            lines_a=(1, 5),
+            file_b="b.py",
+            lines_b=(1, 5),
+            line_count=5,
+            token_count=30,
         )
         report = CloneReport(
-            file_a="a.py", file_b="b.py", groups=[group],
-            total_cloned_lines=5, total_cloned_tokens=30, similarity_pct=0.0,
+            file_a="a.py",
+            file_b="b.py",
+            groups=[group],
+            total_cloned_lines=5,
+            total_cloned_tokens=30,
+            similarity_pct=0.0,
         )
         out = io.StringIO()
         format_human([report], out)

@@ -89,7 +89,8 @@ class TestCliOptions:
     def test_normalize_option(self):
         runner = CliRunner()
         result = runner.invoke(
-            main, [FIXTURES, "--min-tokens", "5", "--normalize", "1", "--format", "json"]
+            main,
+            [FIXTURES, "--min-tokens", "5", "--normalize", "1", "--format", "json"],
         )
         data = json.loads(result.output)
         assert data["total_pairs"] >= 1
@@ -105,8 +106,16 @@ class TestCliOptions:
     def test_suppress_option(self):
         runner = CliRunner()
         result = runner.invoke(
-            main, [FIXTURES, "--min-tokens", "5", "--suppress", "*@abstractmethod*",
-                   "--format", "json"]
+            main,
+            [
+                FIXTURES,
+                "--min-tokens",
+                "5",
+                "--suppress",
+                "*@abstractmethod*",
+                "--format",
+                "json",
+            ],
         )
         data = json.loads(result.output)
         # abc_a/abc_b pair should be suppressed

@@ -88,28 +88,34 @@ class TestHashLines:
         assert result[0].token_count == 3
 
     def test_multiple_lines(self):
-        tokens = _make_tokens_multiline([
-            ["x", "=", "1"],
-            ["y", "=", "2"],
-            ["z", "=", "3"],
-        ])
+        tokens = _make_tokens_multiline(
+            [
+                ["x", "=", "1"],
+                ["y", "=", "2"],
+                ["z", "=", "3"],
+            ]
+        )
         result = hash_lines(tokens)
         assert len(result) == 3
         assert [lh.line for lh in result] == [1, 2, 3]
 
     def test_identical_lines_same_hash(self):
-        tokens = _make_tokens_multiline([
-            ["x", "=", "1"],
-            ["x", "=", "1"],
-        ])
+        tokens = _make_tokens_multiline(
+            [
+                ["x", "=", "1"],
+                ["x", "=", "1"],
+            ]
+        )
         result = hash_lines(tokens)
         assert result[0].hash_value == result[1].hash_value
 
     def test_different_lines_different_hash(self):
-        tokens = _make_tokens_multiline([
-            ["x", "=", "1"],
-            ["y", "=", "2"],
-        ])
+        tokens = _make_tokens_multiline(
+            [
+                ["x", "=", "1"],
+                ["y", "=", "2"],
+            ]
+        )
         result = hash_lines(tokens)
         assert result[0].hash_value != result[1].hash_value
 
@@ -118,10 +124,12 @@ class TestHashLines:
         assert result == []
 
     def test_token_count_per_line(self):
-        tokens = _make_tokens_multiline([
-            ["a", "b"],
-            ["c", "d", "e"],
-        ])
+        tokens = _make_tokens_multiline(
+            [
+                ["a", "b"],
+                ["c", "d", "e"],
+            ]
+        )
         result = hash_lines(tokens)
         assert result[0].token_count == 2
         assert result[1].token_count == 3
@@ -169,10 +177,7 @@ class TestBuildHashTree:
         assert len(result[1]) == 1  # only one pair promotes
 
     def test_four_lines_three_levels(self):
-        lhs = [
-            LineHash(hash_value=i, line=i, token_count=2)
-            for i in range(1, 5)
-        ]
+        lhs = [LineHash(hash_value=i, line=i, token_count=2) for i in range(1, 5)]
         result = build_hash_tree(lhs)
         assert len(result) >= 3
         assert len(result[0]) == 4
@@ -196,9 +201,6 @@ class TestBuildHashTree:
 
     def test_level_cap(self):
         # 512 lines → should cap at _MAX_TREE_LEVEL = 8
-        lhs = [
-            LineHash(hash_value=i, line=i, token_count=1)
-            for i in range(1, 513)
-        ]
+        lhs = [LineHash(hash_value=i, line=i, token_count=1) for i in range(1, 513)]
         result = build_hash_tree(lhs)
         assert len(result) <= 9  # levels 0..8
