@@ -60,12 +60,22 @@ def _filter_groups(
         groups = [g for g in report.groups if keep(g)]
         if not groups:
             continue
+        total_tokens = sum(g.token_count for g in groups)
+        # Scale similarity proportionally to the remaining tokens
+        if report.total_cloned_tokens > 0:
+            similarity = round(
+                report.similarity_pct * total_tokens / report.total_cloned_tokens, 1
+            )
+        else:
+            similarity = 0.0
         filtered.append(
             CloneReport(
                 file_a=report.file_a,
                 file_b=report.file_b,
                 groups=groups,
                 total_cloned_lines=sum(g.line_count for g in groups),
+                total_cloned_tokens=total_tokens,
+                similarity_pct=similarity,
             )
         )
     return filtered

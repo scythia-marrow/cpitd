@@ -145,8 +145,11 @@ def build_config(
     for key, cli_val in cli_overrides.items():
         if key in _TUPLE_FIELDS and key in file_config:
             file_val = file_config[key]
-            assert isinstance(file_val, tuple)
-            assert isinstance(cli_val, tuple)
+            if not isinstance(file_val, tuple) or not isinstance(cli_val, tuple):
+                raise ConfigFileError(
+                    f"expected tuple values for '{key}', "
+                    f"got {type(file_val).__name__} and {type(cli_val).__name__}"
+                )
             merged[key] = file_val + cli_val
         else:
             merged[key] = cli_val

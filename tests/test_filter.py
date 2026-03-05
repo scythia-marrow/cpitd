@@ -40,6 +40,7 @@ def _make_report(
         file_b=file_b,
         groups=groups,
         total_cloned_lines=sum(g.line_count for g in groups),
+        total_cloned_tokens=sum(g.token_count for g in groups),
     )
 
 
@@ -118,6 +119,38 @@ class TestFilterReports:
         assert len(result) == 1
         assert result[0].groups == [kept]
         assert result[0].total_cloned_lines == 2
+        assert result[0].total_cloned_tokens == kept.token_count
+
+    def test_filtered_report_preserves_token_counts(self) -> None:
+        """Filtering must recalculate total_cloned_tokens from remaining groups."""
+        matching = _make_group(
+            lines_a=(1, 4), lines_b=(1, 4), line_count=4, token_count=30,
+        )
+        kept = _make_group(
+            lines_a=(5, 6), lines_b=(5, 6), line_count=2, token_count=15,
+        )
+        report = _make_report([matching, kept])
+        result = filter_reports([report], ("*@abstractmethod*",), _read)
+        assert len(result) == 1
+        assert result[0].total_cloned_tokens == 15
+
+    def test_filtered_report_scales_similarity(self) -> None:
+        """Filtering must proportionally scale similarity_pct."""
+        matching = _make_group(
+            lines_a=(1, 4), lines_b=(1, 4), line_count=4, token_count=40,
+        )
+        kept = _make_group(
+            lines_a=(5, 6), lines_b=(5, 6), line_count=2, token_count=20,
+        )
+        report = CloneReport(
+            file_a="a.py", file_b="b.py", groups=[matching, kept],
+            total_cloned_lines=6, total_cloned_tokens=60,
+            similarity_pct=60.0,
+        )
+        result = filter_reports([report], ("*@abstractmethod*",), _read)
+        assert len(result) == 1
+        # 20/60 of the original tokens remain → 60% * (20/60) = 20%
+        assert result[0].similarity_pct == 20.0
 
     def test_multi_pattern_any_matches(self) -> None:
         group = _make_group(lines_a=(5, 6), lines_b=(5, 6), line_count=2)

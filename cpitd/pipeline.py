@@ -53,7 +53,7 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
 
         try:
             tokens = tokenize(source, filename=file_path.name, level=level)
-        except Exception as exc:
+        except (ValueError, TypeError, LookupError, RuntimeError) as exc:
             _warn(f"skipping {file_path}: tokenizer error: {exc}", verbose=verbose)
             skipped += 1
             continue
@@ -72,7 +72,11 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
 
     matches = index.find_clones()
-    reports = aggregate_clone_matches(matches, file_token_counts=file_token_counts)
+    reports = aggregate_clone_matches(
+        matches,
+        min_group_tokens=config.min_tokens,
+        file_token_counts=file_token_counts,
+    )
     stages = build_filter_stages(config)
     if stages:
         reports = run_filters(reports, stages, _read_file_str)

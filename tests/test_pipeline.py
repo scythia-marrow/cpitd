@@ -42,6 +42,17 @@ class TestScan:
         reports = scan(config, (FIXTURES,))
         assert reports == []
 
+    def test_min_tokens_filters_clone_groups(self):
+        """--min-tokens should filter clone groups, not just whole files."""
+        low = Config(min_tokens=5)
+        high = Config(min_tokens=200)
+        reports_low = scan(low, (FIXTURES,))
+        reports_high = scan(high, (FIXTURES,))
+        # With a high threshold, small clone groups should be filtered out
+        low_groups = sum(len(r.groups) for r in reports_low)
+        high_groups = sum(len(r.groups) for r in reports_high)
+        assert low_groups > high_groups
+
     def test_normalization_affects_results(self):
         config_exact = Config(
             min_tokens=5,
