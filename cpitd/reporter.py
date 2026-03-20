@@ -1,270 +1,321 @@
-"""Output formatting for clone detection results."""
+"""Output formatting for clone detection results.
+
+Converts raw hash-index match groups into deduplicated clone clusters
+and formats them for human or JSON consumption.
+"""
 
 from __future__ import annotations
 
 import json
 from collections import defaultdict
-from typing import TextIO
+from typing import Callable, TextIO
 
-from cpitd.indexer import CloneMatch
+from cpitd.indexer import CloneMatchGroup, NodeLocation
 from cpitd.types import frozen_slots
 
 
 @frozen_slots
-class CloneGroup:
-    """A contiguous range of cloned lines between two locations."""
+class CloneLocation:
+    """A single location where cloned code appears."""
 
-    file_a: str
-    lines_a: tuple[int, int]  # (start_line, end_line)
-    file_b: str
-    lines_b: tuple[int, int]
+    file: str
+    lines: tuple[int, int]  # (start_line, end_line)
+
+
+@frozen_slots
+class CloneCluster:
+    """A group of locations that all share the same cloned code."""
+
+    locations: tuple[CloneLocation, ...]
     line_count: int
     token_count: int
 
 
-@frozen_slots
-class CloneReport:
-    """All clone groups between two file locations."""
+def _group_to_cluster(g: CloneMatchGroup) -> CloneCluster:
+    """Convert a higher-level match group directly to a CloneCluster."""
+    locations = tuple(
+        sorted(
+            (
+                CloneLocation(
+                    file=loc.file_path,
+                    lines=(loc.node.start_line, loc.node.end_line),
+                )
+                for loc in g.locations
+            ),
+            key=lambda loc: (loc.file, loc.lines),
+        )
+    )
+    return CloneCluster(
+        locations=locations,
+        line_count=g.locations[0].node.end_line - g.locations[0].node.start_line + 1,
+        token_count=g.locations[0].node.token_count,
+    )
 
-    file_a: str
-    file_b: str
-    groups: list[CloneGroup]
-    total_cloned_lines: int
-    total_cloned_tokens: int = 0
-    similarity_pct: float = 0.0
+
+def _sorted_locs(g: CloneMatchGroup) -> list[NodeLocation]:
+    """Return group locations sorted by (file_path, start_line)."""
+    return sorted(g.locations, key=lambda loc: (loc.file_path, loc.node.start_line))
 
 
-def _normalize_file_pair(file_a: str, file_b: str) -> tuple[str, str, bool]:
-    """Return (smaller, larger, swapped) for consistent ordering."""
-    if file_a <= file_b:
-        return file_a, file_b, False
-    return file_b, file_a, True
+def _merge_consecutive_groups(groups: list[CloneMatchGroup]) -> list[CloneCluster]:
+    """Merge level-0 match groups whose locations all increment by 1.
 
-
-def _merge_consecutive_matches(
-    matches: list[CloneMatch],
-) -> list[CloneGroup]:
-    """Merge level-0 matches whose line numbers increment by 1 on both sides.
-
-    Assumes all matches share the same normalized file pair.
+    Groups are bucketed by their location shape (sorted file paths,
+    preserving multiplicity for intra-file clones). Within each bucket,
+    groups are sorted by the first location's line number and merged
+    when every location increments by exactly 1.
     """
-    if not matches:
+    if not groups:
         return []
 
-    # Sort by (left line, right line)
-    sorted_matches = sorted(
-        matches, key=lambda m: (m.left.node.start_line, m.right.node.start_line)
-    )
+    by_shape: dict[tuple[str, ...], list[CloneMatchGroup]] = defaultdict(list)
+    for g in groups:
+        shape = tuple(loc.file_path for loc in _sorted_locs(g))
+        by_shape[shape].append(g)
 
-    groups: list[CloneGroup] = []
-    m = sorted_matches[0]
-    cur_a_start = m.left.node.start_line
-    cur_a_end = m.left.node.end_line
-    cur_b_start = m.right.node.start_line
-    cur_b_end = m.right.node.end_line
-    cur_tokens = m.left.node.token_count
-    file_a = m.left.file_path
-    file_b = m.right.file_path
+    clusters: list[CloneCluster] = []
 
-    for m in sorted_matches[1:]:
-        a_line = m.left.node.start_line
-        b_line = m.right.node.start_line
-        # Consecutive if both sides increment by exactly 1
-        if a_line == cur_a_end + 1 and b_line == cur_b_end + 1:
-            cur_a_end = a_line
-            cur_b_end = b_line
-            cur_tokens += m.left.node.token_count
-        else:
-            groups.append(
-                CloneGroup(
-                    file_a=file_a,
-                    lines_a=(cur_a_start, cur_a_end),
-                    file_b=file_b,
-                    lines_b=(cur_b_start, cur_b_end),
-                    line_count=cur_a_end - cur_a_start + 1,
-                    token_count=cur_tokens,
+    for shape, shape_groups in by_shape.items():
+        n = len(shape)
+
+        shape_groups.sort(key=lambda g: _sorted_locs(g)[0].node.start_line)
+
+        prev = _sorted_locs(shape_groups[0])
+        run_start: list[int] = [loc.node.start_line for loc in prev]
+        run_end: list[int] = [loc.node.end_line for loc in prev]
+        run_tokens = shape_groups[0].locations[0].node.token_count
+        run_count = 1
+
+        def _flush() -> None:
+            locs = tuple(
+                sorted(
+                    (
+                        CloneLocation(
+                            file=shape[i],
+                            lines=(run_start[i], run_end[i]),
+                        )
+                        for i in range(n)
+                    ),
+                    key=lambda loc: (loc.file, loc.lines),
                 )
             )
-            cur_a_start = a_line
-            cur_a_end = m.left.node.end_line
-            cur_b_start = b_line
-            cur_b_end = m.right.node.end_line
-            cur_tokens = m.left.node.token_count
-            file_a = m.left.file_path
-            file_b = m.right.file_path
+            clusters.append(
+                CloneCluster(
+                    locations=locs,
+                    line_count=run_count,
+                    token_count=run_tokens,
+                )
+            )
 
-    groups.append(
-        CloneGroup(
-            file_a=file_a,
-            lines_a=(cur_a_start, cur_a_end),
-            file_b=file_b,
-            lines_b=(cur_b_start, cur_b_end),
-            line_count=cur_a_end - cur_a_start + 1,
-            token_count=cur_tokens,
-        )
-    )
-    return groups
+        for g in shape_groups[1:]:
+            cur = _sorted_locs(g)
+            if all(cur[i].node.start_line == run_end[i] + 1 for i in range(n)):
+                for i in range(n):
+                    run_end[i] = cur[i].node.end_line
+                run_tokens += g.locations[0].node.token_count
+                run_count += 1
+            else:
+                _flush()
+                run_start = [loc.node.start_line for loc in cur]
+                run_end = [loc.node.end_line for loc in cur]
+                run_tokens = g.locations[0].node.token_count
+                run_count = 1
 
+        _flush()
 
-def _higher_level_to_group(m: CloneMatch) -> CloneGroup:
-    """Convert a higher-level match directly to a CloneGroup."""
-    return CloneGroup(
-        file_a=m.left.file_path,
-        lines_a=(m.left.node.start_line, m.left.node.end_line),
-        file_b=m.right.file_path,
-        lines_b=(m.right.node.start_line, m.right.node.end_line),
-        line_count=m.left.node.end_line - m.left.node.start_line + 1,
-        token_count=m.left.node.token_count,
-    )
+    return clusters
 
 
-def _deduplicate_groups(groups: list[CloneGroup]) -> list[CloneGroup]:
-    """Remove groups fully subsumed by a larger group."""
-    # Sort largest first so we can check subsumption efficiently
-    by_size = sorted(groups, key=lambda g: g.line_count, reverse=True)
-    kept: list[CloneGroup] = []
-
-    for g in by_size:
-        subsumed = False
-        for k in kept:
-            if (
-                g.file_a == k.file_a
-                and g.file_b == k.file_b
-                and k.lines_a[0] <= g.lines_a[0]
-                and g.lines_a[1] <= k.lines_a[1]
-                and k.lines_b[0] <= g.lines_b[0]
-                and g.lines_b[1] <= k.lines_b[1]
-            ):
-                subsumed = True
-                break
-        if not subsumed:
-            kept.append(g)
-
-    return sorted(kept, key=lambda g: (g.file_a, g.lines_a))
+def _cluster_subsumed(small: CloneCluster, big: CloneCluster) -> bool:
+    """Return True if every location in *small* is contained within a location in *big*."""
+    for s_loc in small.locations:
+        if not any(
+            b_loc.file == s_loc.file
+            and b_loc.lines[0] <= s_loc.lines[0]
+            and s_loc.lines[1] <= b_loc.lines[1]
+            for b_loc in big.locations
+        ):
+            return False
+    return True
 
 
-def aggregate_clone_matches(
-    matches: list[CloneMatch],
+def _deduplicate_clusters(clusters: list[CloneCluster]) -> list[CloneCluster]:
+    """Remove clusters fully subsumed by a larger cluster."""
+    by_size = sorted(clusters, key=lambda c: c.token_count, reverse=True)
+    kept: list[CloneCluster] = []
+    for c in by_size:
+        if any(_cluster_subsumed(c, k) for k in kept):
+            continue
+        kept.append(c)
+    return kept
+
+
+def aggregate_clone_groups(
+    groups: list[CloneMatchGroup],
     *,
     min_group_tokens: int = 10,
-    file_token_counts: dict[str, int] | None = None,
-) -> list[CloneReport]:
-    """Group raw clone matches into per-file-pair reports.
+) -> list[CloneCluster]:
+    """Convert raw match groups into deduplicated clone clusters.
 
-    Level-0 matches are merged when consecutive on both sides.
-    Higher-level matches become groups directly.  Subsumed groups
-    are deduplicated.
+    Level-0 groups with the same file set are merged when their line
+    positions are consecutive. Higher-level groups become clusters
+    directly. Subsumed clusters are removed.
 
     Args:
-        matches: Raw matches from the indexer.
-        min_group_tokens: Drop groups with fewer tokens.
-        file_token_counts: Optional mapping of file path to total token count,
-            used to compute similarity_pct on each report.
+        groups: Raw match groups from the indexer.
+        min_group_tokens: Drop clusters with fewer tokens.
 
     Returns:
-        Aggregated reports, one per unique file pair.
+        Deduplicated clusters sorted by descending token count.
     """
-    counts = file_token_counts or {}
+    level_0 = [g for g in groups if g.level == 0]
+    higher = [g for g in groups if g.level > 0]
 
-    # Bucket by normalized file pair
-    by_pair: dict[tuple[str, str], list[CloneMatch]] = defaultdict(list)
+    clusters: list[CloneCluster] = []
+    clusters.extend(_merge_consecutive_groups(level_0))
+    clusters.extend(_group_to_cluster(g) for g in higher)
 
-    for m in matches:
-        fa, fb, swapped = _normalize_file_pair(m.left.file_path, m.right.file_path)
-        if swapped:
-            m = CloneMatch(
-                left=m.right, right=m.left, level=m.level, shared_hash=m.shared_hash
-            )
-        by_pair[(fa, fb)].append(m)
+    clusters = [c for c in clusters if c.token_count >= min_group_tokens]
+    clusters = _deduplicate_clusters(clusters)
 
-    reports: list[CloneReport] = []
-    for (file_a, file_b), pair_matches in sorted(by_pair.items()):
-        level_0 = [m for m in pair_matches if m.level == 0]
-        higher = [m for m in pair_matches if m.level > 0]
+    return sorted(clusters, key=lambda c: (-c.token_count, -c.line_count))
 
-        groups: list[CloneGroup] = []
-        groups.extend(_merge_consecutive_matches(level_0))
-        groups.extend(_higher_level_to_group(m) for m in higher)
 
-        # Filter small groups
-        groups = [g for g in groups if g.token_count >= min_group_tokens]
-        groups = _deduplicate_groups(groups)
+@frozen_slots
+class FileStat:
+    """Per-file duplication statistics."""
 
-        if not groups:
+    file: str
+    total_tokens: int
+    duplicated_tokens: int
+    duplication_pct: float
+
+
+def compute_file_stats(
+    clusters: list[CloneCluster],
+    file_token_counts: dict[str, int],
+) -> list[FileStat]:
+    """Compute per-file duplication percentages from non-suppressed clusters.
+
+    For each file appearing in any cluster, sums the token counts of all
+    cluster locations in that file (capped at the file's total tokens)
+    and computes the duplication percentage.
+
+    Args:
+        clusters: Final (post-filter) clone clusters.
+        file_token_counts: Mapping of file path to total token count.
+
+    Returns:
+        Per-file stats sorted by descending duplication percentage.
+    """
+    duplicated: dict[str, int] = defaultdict(int)
+    for cluster in clusters:
+        for loc in cluster.locations:
+            duplicated[loc.file] += cluster.token_count
+
+    stats: list[FileStat] = []
+    for file_path, dup_tokens in duplicated.items():
+        total = file_token_counts.get(file_path, 0)
+        if total <= 0:
             continue
-
-        total_lines = sum(g.line_count for g in groups)
-        total_tokens = sum(g.token_count for g in groups)
-
-        # similarity_pct = cloned tokens / smaller file's total tokens
-        smaller_file_tokens = min(counts.get(file_a, 0), counts.get(file_b, 0))
-        similarity = (
-            round(total_tokens / smaller_file_tokens * 100, 1)
-            if smaller_file_tokens > 0
-            else 0.0
-        )
-
-        reports.append(
-            CloneReport(
-                file_a=file_a,
-                file_b=file_b,
-                groups=groups,
-                total_cloned_lines=total_lines,
-                total_cloned_tokens=total_tokens,
-                similarity_pct=similarity,
+        capped = min(dup_tokens, total)
+        stats.append(
+            FileStat(
+                file=file_path,
+                total_tokens=total,
+                duplicated_tokens=capped,
+                duplication_pct=round(capped / total * 100, 1),
             )
         )
 
-    return reports
+    return sorted(stats, key=lambda s: (-s.duplication_pct, s.file))
 
 
-def format_human(reports: list[CloneReport], out: TextIO) -> None:
+ReadFn = Callable[[str], str | None]
+
+
+def _extract_lines(source: str, start: int, end: int) -> str:
+    """Extract lines start..end (1-based, inclusive) from source text."""
+    lines = source.splitlines()
+    return "\n".join(lines[start - 1 : end])
+
+
+def format_human(
+    clusters: list[CloneCluster],
+    out: TextIO,
+    file_stats: list[FileStat] | None = None,
+    read_fn: ReadFn | None = None,
+) -> None:
     """Write human-readable clone report."""
-    if not reports:
+    if not clusters:
         out.write("No clones detected.\n")
         return
 
-    out.write(f"Found potential clones in {len(reports)} file pair(s):\n\n")
-    for report in reports:
-        out.write(f"  {report.file_a}  <->  {report.file_b}\n")
-        for g in report.groups:
-            out.write(
-                f"    Lines {g.lines_a[0]}-{g.lines_a[1]}"
-                f" <-> Lines {g.lines_b[0]}-{g.lines_b[1]}"
-                f" ({g.line_count} lines, {g.token_count} tokens)\n"
-            )
-        similarity = (
-            f"  ({report.similarity_pct}% similar)" if report.similarity_pct else ""
-        )
+    out.write(f"Found {len(clusters)} clone group(s):\n\n")
+    for i, cluster in enumerate(clusters, 1):
         out.write(
-            f"    Total: {report.total_cloned_lines} cloned lines,"
-            f" {report.total_cloned_tokens} tokens{similarity}\n\n"
+            f"  Clone #{i} ({cluster.line_count} lines,"
+            f" {cluster.token_count} tokens):\n"
         )
+        for loc in cluster.locations:
+            out.write(f"    {loc.file}: Lines {loc.lines[0]}-{loc.lines[1]}\n")
+        if read_fn is not None:
+            source = read_fn(cluster.locations[0].file)
+            if source is not None:
+                loc0 = cluster.locations[0]
+                text = _extract_lines(source, loc0.lines[0], loc0.lines[1])
+                out.write("\n")
+                for line in text.splitlines():
+                    out.write(f"    | {line}\n")
+        out.write("\n")
+
+    if file_stats:
+        out.write("File duplication:\n")
+        for fs in file_stats:
+            out.write(
+                f"  {fs.file}: {fs.duplication_pct}% duplicated"
+                f" ({fs.duplicated_tokens}/{fs.total_tokens} tokens)\n"
+            )
 
 
-def format_json(reports: list[CloneReport], out: TextIO) -> None:
+def format_json(
+    clusters: list[CloneCluster],
+    out: TextIO,
+    file_stats: list[FileStat] | None = None,
+    read_fn: ReadFn | None = None,
+) -> None:
     """Write JSON-formatted clone report."""
-    data = {
-        "clone_reports": [
-            {
-                "file_a": r.file_a,
-                "file_b": r.file_b,
-                "total_cloned_lines": r.total_cloned_lines,
-                "total_cloned_tokens": r.total_cloned_tokens,
-                "similarity_pct": r.similarity_pct,
-                "groups": [
-                    {
-                        "lines_a": list(g.lines_a),
-                        "lines_b": list(g.lines_b),
-                        "line_count": g.line_count,
-                        "token_count": g.token_count,
-                    }
-                    for g in r.groups
-                ],
-            }
-            for r in reports
-        ],
-        "total_pairs": len(reports),
+    groups: list[dict[str, object]] = []
+    for c in clusters:
+        group: dict[str, object] = {
+            "line_count": c.line_count,
+            "token_count": c.token_count,
+            "locations": [
+                {"file": loc.file, "lines": list(loc.lines)} for loc in c.locations
+            ],
+        }
+        if read_fn is not None:
+            source = read_fn(c.locations[0].file)
+            if source is not None:
+                loc0 = c.locations[0]
+                group["text"] = _extract_lines(source, loc0.lines[0], loc0.lines[1])
+        groups.append(group)
+    data: dict[str, object] = {
+        "clone_reports": groups,
+        "total_groups": len(clusters),
+        # Deprecated: use clone_groups/total_groups instead.
+        # These aliases will be removed in the next minor version.
+        "total_pairs": len(clusters),
     }
+    if file_stats:
+        data["file_stats"] = [
+            {
+                "file": fs.file,
+                "total_tokens": fs.total_tokens,
+                "duplicated_tokens": fs.duplicated_tokens,
+                "duplication_pct": fs.duplication_pct,
+            }
+            for fs in file_stats
+        ]
     json.dump(data, out, indent=2)
     out.write("\n")

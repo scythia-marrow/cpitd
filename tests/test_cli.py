@@ -66,12 +66,14 @@ class TestCliOutput:
         )
         data = json.loads(result.output)
         assert "clone_reports" in data
+        assert "total_groups" in data
+        # Deprecated aliases still present
         assert "total_pairs" in data
 
     def test_human_output_mentions_clones(self):
         runner = CliRunner()
         result = runner.invoke(main, [FIXTURES, "--min-tokens", "5"])
-        assert "clone" in result.output.lower() or "file pair" in result.output.lower()
+        assert "clone" in result.output.lower()
 
     def test_version_flag(self):
         runner = CliRunner()
@@ -93,7 +95,7 @@ class TestCliOptions:
             [FIXTURES, "--min-tokens", "5", "--normalize", "1", "--format", "json"],
         )
         data = json.loads(result.output)
-        assert data["total_pairs"] >= 1
+        assert data["total_groups"] >= 1
 
     def test_ignore_option(self):
         runner = CliRunner()
@@ -118,13 +120,27 @@ class TestCliOptions:
             ],
         )
         data = json.loads(result.output)
-        # abc_a/abc_b pair should be suppressed
-        for cr in data["clone_reports"]:
-            pair = (cr["file_a"], cr["file_b"])
-            assert not ("abc_a" in pair[0] and "abc_b" in pair[1])
+        # No cluster should contain both abc_a and abc_b
+        for group in data["clone_reports"]:
+            files = {loc["file"] for loc in group["locations"]}
+            has_abc_a = any("abc_a" in f for f in files)
+            has_abc_b = any("abc_b" in f for f in files)
+            assert not (has_abc_a and has_abc_b)
 
     def test_verbose_flag(self):
         runner = CliRunner()
         result = runner.invoke(main, [FIXTURES, "--min-tokens", "5", "--verbose"])
         # Should not crash; exit code depends on clones found
         assert result.exit_code in (0, 1)
+
+    def test_no_text_suppresses_source(self):
+        runner = CliRunner()
+        result = runner.invoke(main, [FIXTURES, "--min-tokens", "5", "--no-text"])
+        assert result.exit_code in (0, 1)
+        assert "|" not in result.output
+
+    def test_default_human_includes_source_text(self):
+        runner = CliRunner()
+        result = runner.invoke(main, [FIXTURES, "--min-tokens", "5"])
+        assert result.exit_code == 1  # clones found
+        assert "|" in result.output

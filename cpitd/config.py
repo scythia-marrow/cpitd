@@ -26,6 +26,7 @@ class Config:
     languages: tuple[str, ...] = ()
     suppress_patterns: tuple[str, ...] = ()
     verbose: bool = False
+    show_text: bool = True
 
 
 class ConfigFileError(Exception):
@@ -40,6 +41,7 @@ _TOML_KEY_TO_FIELD: dict[str, str] = {
     "languages": "languages",
     "suppress": "suppress_patterns",
     "verbose": "verbose",
+    "show-text": "show_text",
 }
 
 _TUPLE_FIELDS = frozenset({"ignore_patterns", "languages", "suppress_patterns"})
@@ -80,7 +82,7 @@ def _convert_value(toml_key: str, field_name: str, value: object) -> object:
             )
         return value
 
-    if field_name == "verbose":
+    if field_name in ("verbose", "show_text"):
         if not isinstance(value, bool):
             raise ConfigFileError(
                 f"[tool.cpitd] '{toml_key}' must be a boolean, got {type(value).__name__}"

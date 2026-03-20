@@ -11,8 +11,9 @@ from cpitd.discovery import discover_files
 from cpitd.filter import build_filter_stages, run_filters
 from cpitd.indexer import LineHashIndex
 from cpitd.reporter import (
-    CloneReport,
-    aggregate_clone_matches,
+    CloneCluster,
+    aggregate_clone_groups,
+    compute_file_stats,
     format_human,
     format_json,
 )
@@ -27,7 +28,7 @@ def _warn(msg: str, *, verbose: bool) -> None:
         print(f"cpitd: warning: {msg}", file=sys.stderr)
 
 
-def scan(config: Config, paths: Paths) -> list[CloneReport]:
+def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, int]]:
     """Run the full clone detection pipeline.
 
     Args:
@@ -35,7 +36,7 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
         paths: File or directory paths to scan.
 
     Returns:
-        Aggregated clone reports for all detected clone pairs.
+        A tuple of (clone clusters, file token counts).
     """
     verbose = config.verbose
 
@@ -68,7 +69,6 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
 
         file_key = str(file_path)
         file_token_counts[file_key] = len(tokens)
-
         line_hashes = hash_lines(tokens)
         tree = build_hash_tree(line_hashes)
         index.add(file_key, tree)
@@ -76,23 +76,29 @@ def scan(config: Config, paths: Paths) -> list[CloneReport]:
     if skipped:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
 
-    matches = index.find_clones()
-    reports = aggregate_clone_matches(
-        matches,
+    match_groups = index.find_clones()
+    clusters = aggregate_clone_groups(
+        match_groups,
         min_group_tokens=config.min_tokens,
-        file_token_counts=file_token_counts,
     )
+    degenerate = [c for c in clusters if len(c.locations) < 2]
+    if degenerate:
+        _warn(
+            f"{len(degenerate)} cluster(s) dropped: fewer than 2 locations",
+            verbose=verbose,
+        )
+        clusters = [c for c in clusters if len(c.locations) >= 2]
     stages = build_filter_stages(config)
     if stages:
-        reports = run_filters(reports, stages, _read_file_str)
-    return reports
+        clusters = run_filters(clusters, stages, _read_file_str)
+    return clusters, file_token_counts
 
 
 def scan_and_report(
     config: Config,
     paths: Paths,
     out: TextIO = sys.stdout,
-) -> list[CloneReport]:
+) -> list[CloneCluster]:
     """Run scan and write formatted output.
 
     Args:
@@ -101,16 +107,18 @@ def scan_and_report(
         out: Output stream for the report.
 
     Returns:
-        The clone reports (also written to out).
+        The clone clusters (also written to out).
     """
-    reports = scan(config, paths)
+    clusters, file_token_counts = scan(config, paths)
+    file_stats = compute_file_stats(clusters, file_token_counts)
+    read_fn = _read_file_str if config.show_text else None
 
     if config.output_format == "json":
-        format_json(reports, out)
+        format_json(clusters, out, file_stats=file_stats, read_fn=read_fn)
     else:
-        format_human(reports, out)
+        format_human(clusters, out, file_stats=file_stats, read_fn=read_fn)
 
-    return reports
+    return clusters
 
 
 def _read_file(path: Path, *, verbose: bool = False) -> str | None:
@@ -123,5 +131,5 @@ def _read_file(path: Path, *, verbose: bool = False) -> str | None:
 
 
 def _read_file_str(path: str) -> str | None:
-    """String-path wrapper around _read_file for use with filter_reports."""
+    """String-path wrapper around _read_file for use with filters."""
     return _read_file(Path(path))

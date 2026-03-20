@@ -86,6 +86,14 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
     default=False,
     help="Print diagnostic warnings to stderr (skipped files, etc.).",
 )
+@click.option(
+    "--no-text",
+    "show_text",
+    is_flag=True,
+    flag_value=False,
+    default=True,
+    help="Suppress clone source text from output.",
+)
 @click.pass_context
 def main(
     ctx,
@@ -97,6 +105,7 @@ def main(
     languages,
     suppress,
     verbose,
+    show_text,
 ):
     """Detect copy-pasted code clones across a codebase.
 
@@ -115,6 +124,7 @@ def main(
         languages=languages,
         suppress=suppress,
         verbose=verbose,
+        show_text=show_text,
     )
 
     try:
