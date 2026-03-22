@@ -7,6 +7,7 @@ from enum import IntEnum
 import pygments.token as token_types
 from pygments import lex
 from pygments.lexers import get_lexer_for_filename, guess_lexer
+from pygments.util import ClassNotFound
 
 from cpitd.types import frozen_slots
 
@@ -28,53 +29,37 @@ class Token:
     column: int
 
 
-# Token categories we always discard (whitespace, comments)
-_SKIP_TYPES = frozenset(
-    {
-        token_types.Token.Text,
-        token_types.Token.Text.Whitespace,
-        token_types.Token.Comment,
-        token_types.Token.Comment.Single,
-        token_types.Token.Comment.Multiline,
-        token_types.Token.Comment.Preproc,
-        token_types.Token.Comment.PreprocFile,
-        token_types.Token.Comment.Special,
-        token_types.Token.Comment.Hashbang,
-    }
+def _expand_token_types(roots: frozenset) -> frozenset:
+    """Expand a set of token types to include all descendants.
+
+    Pygments token types form a hierarchy where ``Token.Name.Variable in
+    Token.Name`` is True. This function walks that hierarchy so we can
+    replace the O(N) ancestry check with a single O(1) set lookup.
+    """
+    expanded: set = set()
+
+    def _walk(ttype) -> None:
+        expanded.add(ttype)
+        for child in ttype.subtypes:
+            _walk(child)
+
+    for root in roots:
+        _walk(root)
+    return frozenset(expanded)
+
+
+# Token categories we always discard (whitespace, comments).
+# Roots only — _expand_token_types adds all descendants.
+_SKIP_TYPES = _expand_token_types(
+    frozenset({token_types.Token.Text, token_types.Token.Comment})
 )
 
-_IDENTIFIER_TYPES = frozenset(
-    {
-        token_types.Token.Name,
-        token_types.Token.Name.Variable,
-        token_types.Token.Name.Function,
-        token_types.Token.Name.Class,
-        token_types.Token.Name.Attribute,
-        token_types.Token.Name.Other,
-    }
-)
+_IDENTIFIER_TYPES = _expand_token_types(frozenset({token_types.Token.Name}))
 
-_LITERAL_TYPES = frozenset(
-    {
-        token_types.Token.Literal,
-        token_types.Token.Literal.String,
-        token_types.Token.Literal.String.Single,
-        token_types.Token.Literal.String.Double,
-        token_types.Token.Literal.String.Backtick,
-        token_types.Token.Literal.Number,
-        token_types.Token.Literal.Number.Integer,
-        token_types.Token.Literal.Number.Float,
-        token_types.Token.Literal.Number.Hex,
-    }
-)
+_LITERAL_TYPES = _expand_token_types(frozenset({token_types.Token.Literal}))
 
 _ID_PLACEHOLDER = "ID"
 _LIT_PLACEHOLDER = "LIT"
-
-
-def _is_subtype(ttype, parent_set):
-    """Check if a token type is a subtype of any type in the set."""
-    return any(ttype is parent or ttype in parent for parent in parent_set)
 
 
 def _advance_position(
@@ -88,13 +73,39 @@ def _advance_position(
 
 def _normalize_value(ttype, value, level):
     """Return the normalized token value based on normalization level."""
-    if level >= NormalizationLevel.IDENTIFIERS and _is_subtype(
-        ttype, _IDENTIFIER_TYPES
-    ):
+    if level >= NormalizationLevel.IDENTIFIERS and ttype in _IDENTIFIER_TYPES:
         return _ID_PLACEHOLDER
-    if level >= NormalizationLevel.LITERALS and _is_subtype(ttype, _LITERAL_TYPES):
+    if level >= NormalizationLevel.LITERALS and ttype in _LITERAL_TYPES:
         return _LIT_PLACEHOLDER
     return value
+
+
+# Lexer cache keyed by file suffix to avoid repeated entry_points iteration.
+_lexer_cache: dict[str, object | None] = {}
+
+_SENTINEL = object()
+
+
+def _get_lexer(filename: str):
+    """Get a pygments lexer for a filename, using a suffix-based cache."""
+    # Extract suffix (e.g. ".py") for cache key
+    dot = filename.rfind(".")
+    suffix = filename[dot:] if dot >= 0 else ""
+
+    cached = _lexer_cache.get(suffix, _SENTINEL)
+    if cached is not _SENTINEL:
+        if cached is None:
+            raise ClassNotFound(f"no lexer for {filename!r}")
+        # Clone the cached lexer class with stripall=True
+        return cached.__class__(stripall=True)
+
+    try:
+        lexer = get_lexer_for_filename(filename, stripall=True)
+    except ClassNotFound:
+        _lexer_cache[suffix] = None
+        raise
+    _lexer_cache[suffix] = lexer
+    return lexer
 
 
 def tokenize(
@@ -114,7 +125,7 @@ def tokenize(
         List of Token objects with whitespace/comments stripped.
     """
     if filename:
-        lexer = get_lexer_for_filename(filename, stripall=True)
+        lexer = _get_lexer(filename)
     else:
         lexer = guess_lexer(source)
 
@@ -125,7 +136,7 @@ def tokenize(
     for ttype, value in lex(source, lexer):
         newlines = value.count("\n")
 
-        if not _is_subtype(ttype, _SKIP_TYPES):
+        if ttype not in _SKIP_TYPES:
             normalized = _normalize_value(ttype, value, level)
             tokens.append(Token(value=normalized, line=line, column=col))
 

@@ -1,7 +1,8 @@
 """Hash index for detecting line-level clones across (and within) files.
 
 Maps hash-tree node hashes to their source locations. Collisions at any
-tree level indicate potential code clones.
+tree level indicate potential code clones. Groups are first class citizens
+to ensure that output scales linearly with the number of duplicated regions.
 """
 
 from __future__ import annotations
@@ -24,18 +25,12 @@ class NodeLocation:
 
 
 @frozen_slots
-class CloneMatch:
-    """Two source locations sharing a tree-node hash."""
+class CloneMatchGroup:
+    """Multiple source locations sharing a tree-node hash."""
 
-    left: NodeLocation
-    right: NodeLocation
+    locations: tuple[NodeLocation, ...]
     level: int
     shared_hash: int
-
-
-def _ranges_overlap(a: HashTreeNode, b: HashTreeNode) -> bool:
-    """Return True if two nodes' line ranges overlap."""
-    return a.start_line <= b.end_line and b.start_line <= a.end_line
 
 
 @dataclass
@@ -58,36 +53,34 @@ class LineHashIndex:
                     NodeLocation(file_path=file_path, node=node)
                 )
 
-    def find_clones(self, *, min_token_count: int = 10) -> list[CloneMatch]:
-        """Find all location pairs sharing a hash-tree node hash.
+    def find_clones(self, *, min_token_count: int = 10) -> list[CloneMatchGroup]:
+        """Find all location groups sharing a hash-tree node hash.
 
         Args:
             min_token_count: Ignore nodes with fewer tokens than this.
 
         Returns:
-            List of CloneMatch objects for each shared hash.
+            One CloneMatchGroup per shared hash, each containing all
+            locations that share that hash. O(N) in the number of
+            locations.
         """
-        matches: list[CloneMatch] = []
+        groups: list[CloneMatchGroup] = []
         for hash_value, locations in self._index.items():
             if len(locations) < 2 or len(locations) > _MAX_BUCKET_SIZE:
                 continue
-            for i, left in enumerate(locations):
-                if left.node.token_count < min_token_count:
+            # Sub-group by level to avoid mixing tree levels
+            by_level: dict[int, list[NodeLocation]] = defaultdict(list)
+            for loc in locations:
+                if loc.node.token_count >= min_token_count:
+                    by_level[loc.node.level].append(loc)
+            for level, level_locs in by_level.items():
+                if len(level_locs) < 2:
                     continue
-                for right in locations[i + 1 :]:
-                    if right.node.token_count < min_token_count:
-                        continue
-                    # Allow same-file matches only when ranges don't overlap
-                    if left.file_path == right.file_path and _ranges_overlap(
-                        left.node, right.node
-                    ):
-                        continue
-                    matches.append(
-                        CloneMatch(
-                            left=left,
-                            right=right,
-                            level=left.node.level,
-                            shared_hash=hash_value,
-                        )
+                groups.append(
+                    CloneMatchGroup(
+                        locations=tuple(level_locs),
+                        level=level,
+                        shared_hash=hash_value,
                     )
-        return matches
+                )
+        return groups

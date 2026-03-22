@@ -1,4 +1,4 @@
-"""Post-aggregation filters for suppressing benign clone groups."""
+"""Post-aggregation filters for suppressing benign clone clusters."""
 
 from __future__ import annotations
 
@@ -7,16 +7,9 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import Callable, Protocol
 
-from cpitd.reporter import CloneGroup, CloneReport
+from cpitd.reporter import CloneCluster
 
-F = Callable[..., object]
 ReadFn = Callable[[str], str | None]
-
-
-def protocol_impl(fn: F) -> F:
-    """Mark a method as a protocol implementation (identity decorator)."""
-    return fn
-
 
 Location = tuple[str, tuple[int, int]]  # (file_path, (start_line, end_line))
 
@@ -52,37 +45,6 @@ def _location_overlaps(
     return False
 
 
-def _filter_groups(
-    reports: list[CloneReport],
-    keep: Callable[[CloneGroup], bool],
-) -> list[CloneReport]:
-    """Return reports with only the groups for which *keep* returns True."""
-    filtered: list[CloneReport] = []
-    for report in reports:
-        groups = [g for g in report.groups if keep(g)]
-        if not groups:
-            continue
-        total_tokens = sum(g.token_count for g in groups)
-        # Scale similarity proportionally to the remaining tokens
-        if report.total_cloned_tokens > 0:
-            similarity = round(
-                report.similarity_pct * total_tokens / report.total_cloned_tokens, 1
-            )
-        else:
-            similarity = 0.0
-        filtered.append(
-            CloneReport(
-                file_a=report.file_a,
-                file_b=report.file_b,
-                groups=groups,
-                total_cloned_lines=sum(g.line_count for g in groups),
-                total_cloned_tokens=total_tokens,
-                similarity_pct=similarity,
-            )
-        )
-    return filtered
-
-
 # ---------------------------------------------------------------------------
 # Multi-stage filter framework
 # ---------------------------------------------------------------------------
@@ -101,74 +63,69 @@ class FilterStage(Protocol):
     """Protocol for a single filter pass."""
 
     def __call__(
-        self, reports: list[CloneReport], ctx: FilterContext
-    ) -> list[CloneReport]: ...
+        self, clusters: list[CloneCluster], ctx: FilterContext
+    ) -> list[CloneCluster]: ...
 
 
 class PatternMatchStage:
-    """Remove groups whose source lines match fnmatch patterns.
+    """Remove clusters where any location's source lines match fnmatch patterns.
 
     Includes one line of context above each chunk to catch decorators
-    like ``@abstractmethod``.  Adds all locations from suppressed groups
+    like ``@abstractmethod``.  Adds all locations from suppressed clusters
     to ``ctx.suppressed_locations``.
     """
 
     def __init__(self, suppress_patterns: tuple[str, ...]) -> None:
         self._patterns = suppress_patterns
 
-    def _group_matches(
+    def _cluster_matches(
         self,
-        group: CloneGroup,
+        cluster: CloneCluster,
         ctx: FilterContext,
     ) -> bool:
-        for file_path, line_range in (
-            (group.file_a, group.lines_a),
-            (group.file_b, group.lines_b),
-        ):
-            if file_path not in ctx.cache:
-                ctx.cache[file_path] = ctx.read_fn(file_path)
-            source = ctx.cache[file_path]
+        for loc in cluster.locations:
+            if loc.file not in ctx.cache:
+                ctx.cache[loc.file] = ctx.read_fn(loc.file)
+            source = ctx.cache[loc.file]
             if source is None:
                 continue
-            for line in _extract_lines(source, line_range, context_above=1):
+            for line in _extract_lines(source, loc.lines, context_above=1):
                 for pat in self._patterns:
                     if fnmatch(line, pat):
                         return True
         return False
 
-    @protocol_impl
     def __call__(
-        self, reports: list[CloneReport], ctx: FilterContext
-    ) -> list[CloneReport]:
+        self, clusters: list[CloneCluster], ctx: FilterContext
+    ) -> list[CloneCluster]:
         suppressed: set[Location] = set()
+        result: list[CloneCluster] = []
 
-        def keep(g: CloneGroup) -> bool:
-            if self._group_matches(g, ctx):
-                suppressed.add((g.file_a, g.lines_a))
-                suppressed.add((g.file_b, g.lines_b))
-                return False
-            return True
+        for cluster in clusters:
+            if self._cluster_matches(cluster, ctx):
+                for loc in cluster.locations:
+                    suppressed.add((loc.file, loc.lines))
+            else:
+                result.append(cluster)
 
-        result = _filter_groups(reports, keep)
         ctx.suppressed_locations.update(suppressed)
         return result
 
 
 class SiblingStage:
-    """Suppress groups where both sides overlap with previously-suppressed locations."""
+    """Suppress clusters where all locations overlap with previously-suppressed locations."""
 
-    @protocol_impl
     def __call__(
-        self, reports: list[CloneReport], ctx: FilterContext
-    ) -> list[CloneReport]:
+        self, clusters: list[CloneCluster], ctx: FilterContext
+    ) -> list[CloneCluster]:
         locs = ctx.suppressed_locations
-        return _filter_groups(
-            reports,
-            lambda g: not (
-                _location_overlaps((g.file_a, g.lines_a), locs)
-                and _location_overlaps((g.file_b, g.lines_b), locs)
-            ),
-        )
+        return [
+            c
+            for c in clusters
+            if not all(
+                _location_overlaps((loc.file, loc.lines), locs) for loc in c.locations
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -177,15 +134,15 @@ class SiblingStage:
 
 
 def run_filters(
-    reports: list[CloneReport],
+    clusters: list[CloneCluster],
     stages: Sequence[FilterStage],
     read_fn: ReadFn,
-) -> list[CloneReport]:
-    """Run *reports* through a sequence of filter stages."""
+) -> list[CloneCluster]:
+    """Run *clusters* through a sequence of filter stages."""
     ctx = FilterContext(read_fn=read_fn)
     for stage in stages:
-        reports = stage(reports, ctx)
-    return reports
+        clusters = stage(clusters, ctx)
+    return clusters
 
 
 def build_filter_stages(config: object) -> list[FilterStage]:
@@ -202,20 +159,20 @@ def build_filter_stages(config: object) -> list[FilterStage]:
     return stages
 
 
-def filter_reports(
-    reports: list[CloneReport],
+def filter_clusters(
+    clusters: list[CloneCluster],
     suppress_patterns: tuple[str, ...],
     read_fn: ReadFn,
-) -> list[CloneReport]:
-    """Remove clone groups whose source lines match any suppress pattern.
+) -> list[CloneCluster]:
+    """Remove clone clusters whose source lines match any suppress pattern.
 
-    This is a backward-compatible wrapper around :func:`run_filters` with
+    Convenience wrapper around :func:`run_filters` with
     :class:`PatternMatchStage` and :class:`SiblingStage`.
     """
     if not suppress_patterns:
-        return reports
+        return clusters
     stages: list[FilterStage] = [
         PatternMatchStage(suppress_patterns),
         SiblingStage(),
     ]
-    return run_filters(reports, stages, read_fn)
+    return run_filters(clusters, stages, read_fn)
