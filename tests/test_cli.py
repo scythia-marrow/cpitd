@@ -67,8 +67,6 @@ class TestCliOutput:
         data = json.loads(result.output)
         assert "clone_reports" in data
         assert "total_groups" in data
-        # Deprecated aliases still present
-        assert "total_pairs" in data
 
     def test_human_output_mentions_clones(self):
         runner = CliRunner()

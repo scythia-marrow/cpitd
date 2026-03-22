@@ -1,9 +1,8 @@
 """Hash index for detecting line-level clones across (and within) files.
 
 Maps hash-tree node hashes to their source locations. Collisions at any
-tree level indicate potential code clones. Groups are produced directly
-(not pairs) so that output scales linearly with the number of duplicated
-regions rather than quadratically with the number of files.
+tree level indicate potential code clones. Groups are first class citizens
+to ensure that output scales linearly with the number of duplicated regions.
 """
 
 from __future__ import annotations
@@ -63,7 +62,7 @@ class LineHashIndex:
         Returns:
             One CloneMatchGroup per shared hash, each containing all
             locations that share that hash. O(N) in the number of
-            locations rather than O(N²) pairs.
+            locations.
         """
         groups: list[CloneMatchGroup] = []
         for hash_value, locations in self._index.items():

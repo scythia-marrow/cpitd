@@ -348,9 +348,6 @@ def format_json(
     data: dict[str, object] = {
         "clone_reports": groups,
         "total_groups": len(clusters),
-        # Deprecated: use clone_groups/total_groups instead.
-        # These aliases will be removed in the next minor version.
-        "total_pairs": len(clusters),
     }
     if file_stats:
         data["file_stats"] = [

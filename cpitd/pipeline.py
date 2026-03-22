@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -30,10 +31,13 @@ def _warn(msg: str, *, verbose: bool) -> None:
         print(f"cpitd: warning: {msg}", file=sys.stderr)
 
 
-_OK = "ok"
-_READ_ERR = "read_err"
-_TOK_ERR = "tok_err"
-_SKIP = "skip"
+class _FileResult(enum.Enum):
+    """Outcome tags for per-file processing in worker processes."""
+
+    OK = "ok"
+    READ_ERR = "read_err"
+    TOK_ERR = "tok_err"
+    SKIP = "skip"
 
 
 def _process_file(
@@ -42,30 +46,30 @@ def _process_file(
     """Process a single file: read, tokenize, hash, build tree.
 
     Runs in a worker process. Returns a tagged tuple:
-    - (_OK, file_key, token_count, tree) on success
-    - (_READ_ERR, file_key, error_message) on read error
-    - (_TOK_ERR, file_key, error_message) on tokenizer error
-    - (_SKIP,) when below min_tokens threshold
+    - (_FileResult.OK, file_key, token_count, tree) on success
+    - (_FileResult.READ_ERR, file_key, error_message) on read error
+    - (_FileResult.TOK_ERR, file_key, error_message) on tokenizer error
+    - (_FileResult.SKIP,) when below min_tokens threshold
     """
     file_path_str, filename, min_tokens, level_int = args
     try:
         source = Path(file_path_str).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        return (_READ_ERR, file_path_str, str(exc))
+        return (_FileResult.READ_ERR, file_path_str, str(exc))
 
     try:
         tokens = tokenize(
             source, filename=filename, level=NormalizationLevel(level_int)
         )
     except (ValueError, TypeError, LookupError, RuntimeError) as exc:
-        return (_TOK_ERR, file_path_str, str(exc))
+        return (_FileResult.TOK_ERR, file_path_str, str(exc))
 
     if len(tokens) < min_tokens:
-        return (_SKIP,)
+        return (_FileResult.SKIP,)
 
     line_hashes = hash_lines(tokens)
     tree = build_hash_tree(line_hashes)
-    return (_OK, file_path_str, len(tokens), tree)
+    return (_FileResult.OK, file_path_str, len(tokens), tree)
 
 
 def _max_workers() -> int:
@@ -114,14 +118,14 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
 
     for result in results:
         tag = result[0]
-        if tag == _SKIP:
+        if tag == _FileResult.SKIP:
             continue
-        if tag == _READ_ERR:
+        if tag == _FileResult.READ_ERR:
             _, file_key, error_msg = result
             _warn(f"skipping {file_key}: {error_msg}", verbose=verbose)
             skipped += 1
             continue
-        if tag == _TOK_ERR:
+        if tag == _FileResult.TOK_ERR:
             _, file_key, error_msg = result
             _warn(
                 f"skipping {file_key}: tokenizer error: {error_msg}",
@@ -143,9 +147,13 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
     )
     degenerate = [c for c in clusters if len(c.locations) < 2]
     if degenerate:
-        _warn(
-            f"{len(degenerate)} cluster(s) dropped: fewer than 2 locations",
-            verbose=verbose,
+        # This should never happen — a cluster with <2 locations indicates
+        # a bug in the indexer or aggregation logic.
+        print(
+            f"cpitd: error: {len(degenerate)} cluster(s) with fewer than 2 "
+            f"locations (this is a bug — please report it at "
+            f"https://github.com/scythia-marrow/cpitd/issues)",
+            file=sys.stderr,
         )
         clusters = [c for c in clusters if len(c.locations) >= 2]
     stages = build_filter_stages(config)

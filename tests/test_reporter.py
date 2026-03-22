@@ -289,9 +289,8 @@ class TestFormatJson:
         out = io.StringIO()
         format_json([cluster], out)
         data = json.loads(out.getvalue())
-        # Deprecated aliases still present for backward compatibility
-        assert data["clone_reports"] == data["clone_reports"]
-        assert data["total_pairs"] == data["total_groups"]
+        assert "clone_reports" in data
+        assert "total_groups" in data
 
     def test_verbose_includes_text(self):
         cluster = CloneCluster(
@@ -331,7 +330,6 @@ class TestFormatJson:
         format_json([], out)
         data = json.loads(out.getvalue())
         assert data["total_groups"] == 0
-        assert data["total_pairs"] == 0
 
 
 class TestComputeFileStats:

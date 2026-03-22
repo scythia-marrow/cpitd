@@ -45,7 +45,7 @@ def _collect_explicit_args(ctx: click.Context, **kwargs: object) -> dict[str, ob
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option(
     "--min-tokens",
-    default=50,
+    default=20,
     show_default=True,
     help="Minimum pygments token count to report a clone group.",
 )
