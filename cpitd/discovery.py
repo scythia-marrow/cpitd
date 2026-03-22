@@ -5,9 +5,9 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
-from pygments.lexers import get_lexer_for_filename
 from pygments.util import ClassNotFound
 
+from cpitd.tokenizer import _get_lexer
 from cpitd.types import Paths
 
 
@@ -60,7 +60,7 @@ def _should_include(
             return False
 
     try:
-        lexer = get_lexer_for_filename(path.name)
+        lexer = _get_lexer(path.name)
     except ClassNotFound:
         return False
 

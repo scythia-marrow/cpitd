@@ -257,7 +257,11 @@ class TestErrorHandling:
 
         config = Config(min_tokens=5, verbose=True)
 
-        with patch("cpitd.pipeline.tokenize", side_effect=RuntimeError("lex boom")):
+        # Force serial mode (workers=0) so the mock applies in-process.
+        with (
+            patch("cpitd.pipeline._max_workers", return_value=0),
+            patch("cpitd.pipeline.tokenize", side_effect=RuntimeError("lex boom")),
+        ):
             clusters, _ = scan(config, (str(tmp_path),))
 
         assert clusters == []

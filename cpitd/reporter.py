@@ -7,6 +7,7 @@ and formats them for human or JSON consumption.
 from __future__ import annotations
 
 import json
+from bisect import bisect_right, insort
 from collections import defaultdict
 from typing import Callable, TextIO
 
@@ -126,27 +127,71 @@ def _merge_consecutive_groups(groups: list[CloneMatchGroup]) -> list[CloneCluste
     return clusters
 
 
-def _cluster_subsumed(small: CloneCluster, big: CloneCluster) -> bool:
-    """Return True if every location in *small* is contained within a location in *big*."""
-    for s_loc in small.locations:
-        if not any(
-            b_loc.file == s_loc.file
-            and b_loc.lines[0] <= s_loc.lines[0]
-            and s_loc.lines[1] <= b_loc.lines[1]
-            for b_loc in big.locations
-        ):
-            return False
-    return True
-
-
 def _deduplicate_clusters(clusters: list[CloneCluster]) -> list[CloneCluster]:
-    """Remove clusters fully subsumed by a larger cluster."""
+    """Remove clusters fully subsumed by a larger cluster.
+
+    Uses a per-file sorted interval index with bisect for the first
+    location lookup, and a per-cluster index for fast verification of
+    subsequent locations.  Locations are checked cheapest-file-first to
+    minimize scan work.
+    """
     by_size = sorted(clusters, key=lambda c: c.token_count, reverse=True)
+
+    # Per-file index: file -> sorted list of (start, end, kept_index)
+    file_intervals: dict[str, list[tuple[int, int, int]]] = defaultdict(list)
+    # Per-cluster index: kidx -> {file: [(start, end), ...]}
+    cluster_locs: dict[int, dict[str, list[tuple[int, int]]]] = {}
     kept: list[CloneCluster] = []
+
+    _INF = float("inf")
+
     for c in by_size:
-        if any(_cluster_subsumed(c, k) for k in kept):
-            continue
+        # Check cheapest file first to minimise scan work.
+        locs = sorted(
+            c.locations,
+            key=lambda loc: len(file_intervals.get(loc.file, ())),
+        )
+
+        covering: set[int] | None = None
+
+        for loc in locs:
+            s, e = loc.lines
+
+            if covering is None:
+                # First location: scan the file interval index.
+                entries = file_intervals.get(loc.file)
+                if not entries:
+                    break
+
+                # bisect: only entries with start <= s
+                pos = bisect_right(entries, (s, _INF, _INF))
+                loc_covering = {kidx for start, end, kidx in entries[:pos] if end >= e}
+                if not loc_covering:
+                    break
+                covering = loc_covering
+            else:
+                # Subsequent locations: verify only the covering set.
+                still_covering = set()
+                for kidx in covering:
+                    kloc = cluster_locs[kidx].get(loc.file)
+                    if kloc and any(cs <= s and e <= ce for cs, ce in kloc):
+                        still_covering.add(kidx)
+                covering = still_covering
+                if not covering:
+                    break
+        else:
+            if covering:
+                continue
+
+        kidx = len(kept)
         kept.append(c)
+        cloc: dict[str, list[tuple[int, int]]] = {}
+        for loc in c.locations:
+            s, e = loc.lines
+            insort(file_intervals[loc.file], (s, e, kidx))
+            cloc.setdefault(loc.file, []).append((s, e))
+        cluster_locs[kidx] = cloc
+
     return kept
 
 
