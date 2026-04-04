@@ -84,12 +84,18 @@ class PatternMatchStage:
         ctx: FilterContext,
     ) -> bool:
         for loc in cluster.locations:
-            if loc.file not in ctx.cache:
-                ctx.cache[loc.file] = ctx.read_fn(loc.file)
-            source = ctx.cache[loc.file]
-            if source is None:
-                continue
-            for line in _extract_lines(source, loc.lines, context_above=1):
+            # Use pre-populated text (includes 1 context line above)
+            # when available; fall back to file read for backwards compat.
+            if loc.text is not None:
+                lines = loc.text.splitlines()
+            else:
+                if loc.file not in ctx.cache:
+                    ctx.cache[loc.file] = ctx.read_fn(loc.file)
+                source = ctx.cache[loc.file]
+                if source is None:
+                    continue
+                lines = _extract_lines(source, loc.lines, context_above=1)
+            for line in lines:
                 for pat in self._patterns:
                     if fnmatch(line, pat):
                         return True

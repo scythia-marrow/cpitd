@@ -19,6 +19,7 @@ from cpitd.reporter import (
     compute_file_stats,
     format_human,
     format_json,
+    populate_text,
 )
 from cpitd.tokenizer import NormalizationLevel, tokenize
 from cpitd.types import Paths
@@ -161,6 +162,7 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             file=sys.stderr,
         )
         clusters = [c for c in clusters if len(c.locations) >= 2]
+    clusters = populate_text(clusters, _read_file_str)
     stages = build_filter_stages(config)
     if stages:
         clusters = run_filters(clusters, stages, _read_file_str)
@@ -184,12 +186,11 @@ def scan_and_report(
     """
     clusters, file_token_counts = scan(config, paths)
     file_stats = compute_file_stats(clusters, file_token_counts)
-    read_fn = _read_file_str if config.show_text else None
 
     if config.output_format == "json":
-        format_json(clusters, out, file_stats=file_stats, read_fn=read_fn)
+        format_json(clusters, out, file_stats=file_stats, show_text=config.show_text)
     else:
-        format_human(clusters, out, file_stats=file_stats, read_fn=read_fn)
+        format_human(clusters, out, file_stats=file_stats, show_text=config.show_text)
 
     return clusters
 

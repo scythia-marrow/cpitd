@@ -212,19 +212,15 @@ class TestFormatHuman:
             ),
             line_count=2,
             token_count=20,
+            text="alpha\nbeta",
         )
-        source = "line1\nalpha\nbeta\nline4\n"
-
-        def read_fn(path: str) -> str | None:
-            return source if path == "a.py" else None
-
         out = io.StringIO()
-        format_human([cluster], out, read_fn=read_fn)
+        format_human([cluster], out)
         output = out.getvalue()
         assert "| alpha" in output
         assert "| beta" in output
 
-    def test_no_source_text_without_read_fn(self):
+    def test_no_source_text_without_show_text(self):
         cluster = CloneCluster(
             locations=(
                 CloneLocation(file="a.py", lines=(1, 2)),
@@ -232,9 +228,10 @@ class TestFormatHuman:
             ),
             line_count=2,
             token_count=20,
+            text="alpha\nbeta",
         )
         out = io.StringIO()
-        format_human([cluster], out)
+        format_human([cluster], out, show_text=False)
         assert "|" not in out.getvalue()
 
     def test_multiple_locations_in_cluster(self):
@@ -300,18 +297,14 @@ class TestFormatJson:
             ),
             line_count=2,
             token_count=20,
+            text="alpha\nbeta",
         )
-        source = "alpha\nbeta\ngamma\n"
-
-        def read_fn(path: str) -> str | None:
-            return source if path == "a.py" else None
-
         out = io.StringIO()
-        format_json([cluster], out, read_fn=read_fn)
+        format_json([cluster], out)
         data = json.loads(out.getvalue())
         assert data["clone_reports"][0]["text"] == "alpha\nbeta"
 
-    def test_no_text_without_read_fn(self):
+    def test_no_text_without_show_text(self):
         cluster = CloneCluster(
             locations=(
                 CloneLocation(file="a.py", lines=(1, 2)),
@@ -319,9 +312,10 @@ class TestFormatJson:
             ),
             line_count=2,
             token_count=20,
+            text="alpha\nbeta",
         )
         out = io.StringIO()
-        format_json([cluster], out)
+        format_json([cluster], out, show_text=False)
         data = json.loads(out.getvalue())
         assert "text" not in data["clone_reports"][0]
 
