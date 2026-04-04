@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add warning when safety filter drops single-location clusters (#45)
 
 ### Changed
+- Add warning when populate_text cannot read a file (#64)
 - Remove dead read_fn fallback from formatters (#62)
 - Optimize clone cluster deduplication with per-file interval index and bisect lookups (#53, #54)
 - Improve parallel scheduling with largest-first sorting and per-file task dispatch (#52)
