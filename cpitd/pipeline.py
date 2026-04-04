@@ -19,6 +19,7 @@ from cpitd.reporter import (
     compute_file_stats,
     format_human,
     format_json,
+    populate_text,
 )
 from cpitd.tokenizer import NormalizationLevel, tokenize
 from cpitd.types import Paths
@@ -116,6 +117,11 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             futures = {pool.submit(_process_file, item): item[0] for item in work_items}
             results = [f.result() for f in as_completed(futures)]
 
+    # Sort results by file path for deterministic index insertion order.
+    # as_completed() returns in arrival order which varies between runs;
+    # without this sort, dict iteration in find_clones() is non-deterministic.
+    results.sort(key=lambda r: r[1] if len(r) > 1 and isinstance(r[1], str) else "")
+
     for result in results:
         tag = result[0]
         if tag == _FileResult.SKIP:
@@ -156,9 +162,14 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             file=sys.stderr,
         )
         clusters = [c for c in clusters if len(c.locations) >= 2]
+    clusters = populate_text(
+        clusters,
+        _read_file_str,
+        warn_fn=lambda msg: _warn(msg, verbose=verbose),
+    )
     stages = build_filter_stages(config)
     if stages:
-        clusters = run_filters(clusters, stages, _read_file_str)
+        clusters = run_filters(clusters, stages)
     return clusters, file_token_counts
 
 
@@ -179,12 +190,11 @@ def scan_and_report(
     """
     clusters, file_token_counts = scan(config, paths)
     file_stats = compute_file_stats(clusters, file_token_counts)
-    read_fn = _read_file_str if config.show_text else None
 
     if config.output_format == "json":
-        format_json(clusters, out, file_stats=file_stats, read_fn=read_fn)
+        format_json(clusters, out, file_stats=file_stats, show_text=config.show_text)
     else:
-        format_human(clusters, out, file_stats=file_stats, read_fn=read_fn)
+        format_human(clusters, out, file_stats=file_stats, show_text=config.show_text)
 
     return clusters
 

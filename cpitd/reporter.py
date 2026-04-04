@@ -21,6 +21,7 @@ class CloneLocation:
 
     file: str
     lines: tuple[int, int]  # (start_line, end_line)
+    text: str | None = None  # clone lines + 1 context line above
 
 
 @frozen_slots
@@ -30,6 +31,7 @@ class CloneCluster:
     locations: tuple[CloneLocation, ...]
     line_count: int
     token_count: int
+    text: str | None = None  # display text from first sorted location
 
 
 def _group_to_cluster(g: CloneMatchGroup) -> CloneCluster:
@@ -46,9 +48,13 @@ def _group_to_cluster(g: CloneMatchGroup) -> CloneCluster:
             key=lambda loc: (loc.file, loc.lines),
         )
     )
+    # line_count is provisional; populate_text() will derive it from
+    # the actual source text of the first sorted location.
+    loc0 = locations[0]
+    line_count = loc0.lines[1] - loc0.lines[0] + 1
     return CloneCluster(
         locations=locations,
-        line_count=g.locations[0].node.end_line - g.locations[0].node.start_line + 1,
+        line_count=line_count,
         token_count=g.locations[0].node.token_count,
     )
 
@@ -226,6 +232,80 @@ def aggregate_clone_groups(
     return sorted(clusters, key=lambda c: (-c.token_count, -c.line_count))
 
 
+WarnFn = Callable[[str], None]
+
+
+def populate_text(
+    clusters: list[CloneCluster],
+    read_fn: ReadFn,
+    warn_fn: WarnFn | None = None,
+) -> list[CloneCluster]:
+    """Attach source text to locations and clusters, reading each file once.
+
+    Per-location text includes 1 line of context above the clone region
+    (for suppression pattern matching).  Per-cluster text is the display
+    text from the first sorted location (no context).  ``line_count`` is
+    derived from the display text so it always matches what is shown.
+
+    If a file cannot be read (e.g. deleted between discovery and text
+    extraction), the location's text is set to None and a warning is
+    emitted via *warn_fn*.
+    """
+    cache: dict[str, str | None] = {}
+    warned: set[str] = set()
+
+    def _read(path: str) -> str | None:
+        if path not in cache:
+            cache[path] = read_fn(path)
+            if cache[path] is None and path not in warned:
+                warned.add(path)
+                if warn_fn is not None:
+                    warn_fn(
+                        f"cannot read {path} for text extraction "
+                        f"(file may have been deleted since scan started)"
+                    )
+        return cache[path]
+
+    result: list[CloneCluster] = []
+    for c in clusters:
+        new_locs: list[CloneLocation] = []
+        for loc in c.locations:
+            source = _read(loc.file)
+            if source is not None:
+                start, end = loc.lines
+                context_start = max(1, start - 1)
+                lines = source.splitlines()
+                loc_text = "\n".join(lines[context_start - 1 : end])
+            else:
+                loc_text = None
+            new_locs.append(
+                CloneLocation(file=loc.file, lines=loc.lines, text=loc_text)
+            )
+
+        loc0 = new_locs[0]
+        if loc0.text is not None:
+            # Strip the context line to get display text.
+            start = loc0.lines[0]
+            context_start = max(1, start - 1)
+            context_lines = start - context_start
+            display_lines = loc0.text.splitlines()[context_lines:]
+            display_text = "\n".join(display_lines)
+            line_count = len(display_lines)
+        else:
+            display_text = None
+            line_count = c.line_count
+
+        result.append(
+            CloneCluster(
+                locations=tuple(new_locs),
+                line_count=line_count,
+                token_count=c.token_count,
+                text=display_text,
+            )
+        )
+    return result
+
+
 @frozen_slots
 class FileStat:
     """Per-file duplication statistics."""
@@ -279,17 +359,12 @@ def compute_file_stats(
 ReadFn = Callable[[str], str | None]
 
 
-def _extract_lines(source: str, start: int, end: int) -> str:
-    """Extract lines start..end (1-based, inclusive) from source text."""
-    lines = source.splitlines()
-    return "\n".join(lines[start - 1 : end])
-
-
 def format_human(
     clusters: list[CloneCluster],
     out: TextIO,
     file_stats: list[FileStat] | None = None,
-    read_fn: ReadFn | None = None,
+    *,
+    show_text: bool = True,
 ) -> None:
     """Write human-readable clone report."""
     if not clusters:
@@ -304,14 +379,10 @@ def format_human(
         )
         for loc in cluster.locations:
             out.write(f"    {loc.file}: Lines {loc.lines[0]}-{loc.lines[1]}\n")
-        if read_fn is not None:
-            source = read_fn(cluster.locations[0].file)
-            if source is not None:
-                loc0 = cluster.locations[0]
-                text = _extract_lines(source, loc0.lines[0], loc0.lines[1])
-                out.write("\n")
-                for line in text.splitlines():
-                    out.write(f"    | {line}\n")
+        if show_text and cluster.text is not None:
+            out.write("\n")
+            for line in cluster.text.splitlines():
+                out.write(f"    | {line}\n")
         out.write("\n")
 
     if file_stats:
@@ -327,7 +398,8 @@ def format_json(
     clusters: list[CloneCluster],
     out: TextIO,
     file_stats: list[FileStat] | None = None,
-    read_fn: ReadFn | None = None,
+    *,
+    show_text: bool = True,
 ) -> None:
     """Write JSON-formatted clone report."""
     groups: list[dict[str, object]] = []
@@ -339,11 +411,8 @@ def format_json(
                 {"file": loc.file, "lines": list(loc.lines)} for loc in c.locations
             ],
         }
-        if read_fn is not None:
-            source = read_fn(c.locations[0].file)
-            if source is not None:
-                loc0 = c.locations[0]
-                group["text"] = _extract_lines(source, loc0.lines[0], loc0.lines[1])
+        if show_text and c.text is not None:
+            group["text"] = c.text
         groups.append(group)
     data: dict[str, object] = {
         "clone_reports": groups,

@@ -12,6 +12,17 @@ from cpitd.filter import (
 from cpitd.reporter import CloneCluster, CloneLocation
 
 
+def _loc_text(file: str, lines: tuple[int, int]) -> str | None:
+    """Extract text with 1 context line above, matching populate_text() behaviour."""
+    source = FILES.get(file)
+    if source is None:
+        return None
+    src_lines = source.splitlines()
+    start, end = lines
+    context_start = max(1, start - 1)
+    return "\n".join(src_lines[context_start - 1 : end])
+
+
 def _make_cluster(
     locations: list[tuple[str, tuple[int, int]]] | None = None,
     line_count: int = 5,
@@ -20,7 +31,10 @@ def _make_cluster(
     if locations is None:
         locations = [("a.py", (1, 5)), ("b.py", (1, 5))]
     return CloneCluster(
-        locations=tuple(CloneLocation(file=f, lines=lines) for f, lines in locations),
+        locations=tuple(
+            CloneLocation(file=f, lines=lines, text=_loc_text(f, lines))
+            for f, lines in locations
+        ),
         line_count=line_count,
         token_count=token_count,
     )
@@ -69,14 +83,10 @@ FILES: dict[str, str] = {
 }
 
 
-def _read(path: str) -> str | None:
-    return FILES.get(path)
-
-
 class TestFilterClusters:
     def test_empty_patterns_no_filtering(self) -> None:
         cluster = _make_cluster()
-        result = filter_clusters([cluster], (), _read)
+        result = filter_clusters([cluster], ())
         assert result == [cluster]
 
     def test_matching_cluster_suppressed(self) -> None:
@@ -84,7 +94,7 @@ class TestFilterClusters:
             [("a.py", (1, 4)), ("b.py", (1, 4))],
             line_count=4,
         )
-        result = filter_clusters([cluster], ("*@abstractmethod*",), _read)
+        result = filter_clusters([cluster], ("*@abstractmethod*",))
         assert result == []
 
     def test_non_matching_cluster_kept(self) -> None:
@@ -92,7 +102,7 @@ class TestFilterClusters:
             [("a.py", (5, 6)), ("b.py", (5, 6))],
             line_count=2,
         )
-        result = filter_clusters([cluster], ("*@abstractmethod*",), _read)
+        result = filter_clusters([cluster], ("*@abstractmethod*",))
         assert len(result) == 1
         assert result[0] == cluster
 
@@ -105,7 +115,7 @@ class TestFilterClusters:
             [("a.py", (5, 6)), ("b.py", (5, 6))],
             line_count=2,
         )
-        result = filter_clusters([matching, kept], ("*@abstractmethod*",), _read)
+        result = filter_clusters([matching, kept], ("*@abstractmethod*",))
         assert len(result) == 1
         assert result[0] == kept
 
@@ -117,7 +127,6 @@ class TestFilterClusters:
         result = filter_clusters(
             [cluster],
             ("*@abstractmethod*", "*return 42*"),
-            _read,
         )
         assert result == []
 
@@ -127,7 +136,7 @@ class TestFilterClusters:
             [("a.py", (3, 3)), ("b.py", (3, 3))],
             line_count=1,
         )
-        result = filter_clusters([cluster], ("*@abstractmethod*",), _read)
+        result = filter_clusters([cluster], ("*@abstractmethod*",))
         assert result == []
 
     def test_context_above_clamped_at_file_start(self) -> None:
@@ -136,7 +145,7 @@ class TestFilterClusters:
             [("a.py", (1, 1)), ("b.py", (1, 1))],
             line_count=1,
         )
-        result = filter_clusters([cluster], ("*@abstractmethod*",), _read)
+        result = filter_clusters([cluster], ("*@abstractmethod*",))
         assert len(result) == 1
 
     def test_unreadable_file_not_suppressed(self) -> None:
@@ -144,7 +153,7 @@ class TestFilterClusters:
         cluster = _make_cluster(
             [("missing.py", (1, 5)), ("also_missing.py", (1, 5))],
         )
-        result = filter_clusters([cluster], ("*@abstractmethod*",), _read)
+        result = filter_clusters([cluster], ("*@abstractmethod*",))
         assert len(result) == 1
 
 
@@ -169,7 +178,6 @@ class TestSiblingSupression:
         result = filter_clusters(
             [abc_cluster, impl_cluster],
             ("*@abstractmethod*",),
-            _read,
         )
         assert result == []
 
@@ -189,7 +197,6 @@ class TestSiblingSupression:
         result = filter_clusters(
             [abc_cluster, mixed],
             ("*@abstractmethod*",),
-            _read,
         )
         assert len(result) == 1
         assert result[0] == mixed
@@ -210,7 +217,6 @@ class TestSiblingSupression:
         result = filter_clusters(
             [abc_cluster, impl_cluster],
             ("*@abstractmethod*",),
-            _read,
         )
         assert result == []
 
@@ -226,7 +232,6 @@ class TestPatternMatchStageIsolation:
         result = run_filters(
             [cluster],
             [PatternMatchStage(("*@abstractmethod*",))],
-            _read,
         )
         assert result == []
 
@@ -238,7 +243,6 @@ class TestPatternMatchStageIsolation:
         result = run_filters(
             [cluster],
             [PatternMatchStage(("*@abstractmethod*",))],
-            _read,
         )
         assert len(result) == 1
         assert result[0] == cluster
@@ -249,7 +253,7 @@ class TestPatternMatchStageIsolation:
             [("a.py", (1, 4)), ("b.py", (1, 4))],
             line_count=4,
         )
-        ctx = FilterContext(read_fn=_read)
+        ctx = FilterContext()
         PatternMatchStage(("*@abstractmethod*",))([cluster], ctx)
         assert ("a.py", (1, 4)) in ctx.suppressed_locations
         assert ("b.py", (1, 4)) in ctx.suppressed_locations
@@ -264,7 +268,7 @@ class TestSiblingStageIsolation:
             line_count=1,
             token_count=10,
         )
-        ctx = FilterContext(read_fn=_read)
+        ctx = FilterContext()
         ctx.suppressed_locations = {
             ("impl_a.py", (4, 4)),
             ("impl_b.py", (4, 4)),
@@ -278,7 +282,7 @@ class TestSiblingStageIsolation:
             line_count=1,
             token_count=10,
         )
-        ctx = FilterContext(read_fn=_read)
+        ctx = FilterContext()
         ctx.suppressed_locations = {("impl_a.py", (4, 4))}
         result = SiblingStage()([cluster], ctx)
         assert len(result) == 1
@@ -286,7 +290,7 @@ class TestSiblingStageIsolation:
 
     def test_no_suppression_with_empty_locations(self) -> None:
         cluster = _make_cluster()
-        ctx = FilterContext(read_fn=_read)
+        ctx = FilterContext()
         result = SiblingStage()([cluster], ctx)
         assert len(result) == 1
 
@@ -307,7 +311,7 @@ class TestStageComposition:
             token_count=10,
         )
         stages = [PatternMatchStage(("*@abstractmethod*",)), SiblingStage()]
-        result = run_filters([abc_cluster, impl_cluster], stages, _read)
+        result = run_filters([abc_cluster, impl_cluster], stages)
         assert result == []
 
     def test_pattern_only_leaves_sibling_clusters(self) -> None:
@@ -325,12 +329,11 @@ class TestStageComposition:
         result = run_filters(
             [abc_cluster, impl_cluster],
             [PatternMatchStage(("*@abstractmethod*",))],
-            _read,
         )
         assert len(result) == 1
         assert result[0] == impl_cluster
 
     def test_empty_stage_list_is_noop(self) -> None:
         cluster = _make_cluster()
-        result = run_filters([cluster], [], _read)
+        result = run_filters([cluster], [])
         assert result == [cluster]
