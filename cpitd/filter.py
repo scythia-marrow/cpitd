@@ -5,32 +5,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
-from typing import Callable, Protocol
+from typing import Protocol
 
 from cpitd.reporter import CloneCluster
 
-ReadFn = Callable[[str], str | None]
-
 Location = tuple[str, tuple[int, int]]  # (file_path, (start_line, end_line))
-
-
-def _extract_lines(
-    source: str,
-    line_range: tuple[int, int],
-    context_above: int = 0,
-) -> list[str]:
-    """Return the source lines for the given 1-based inclusive range.
-
-    Args:
-        source: Full file contents.
-        line_range: 1-based inclusive (start, end) line range.
-        context_above: Extra lines to include before the chunk start,
-            clamped to the beginning of the file.
-    """
-    lines = source.splitlines()
-    start, end = line_range
-    start = max(1, start - context_above)
-    return lines[start - 1 : end]
 
 
 def _location_overlaps(
@@ -54,8 +33,6 @@ def _location_overlaps(
 class FilterContext:
     """Mutable shared state passed between filter stages."""
 
-    read_fn: ReadFn
-    cache: dict[str, str | None] = field(default_factory=dict)
     suppressed_locations: set[Location] = field(default_factory=set)
 
 
@@ -68,11 +45,11 @@ class FilterStage(Protocol):
 
 
 class PatternMatchStage:
-    """Remove clusters where any location's source lines match fnmatch patterns.
+    """Remove clusters where any location's pre-populated text matches patterns.
 
-    Includes one line of context above each chunk to catch decorators
-    like ``@abstractmethod``.  Adds all locations from suppressed clusters
-    to ``ctx.suppressed_locations``.
+    Location text includes one line of context above each chunk to catch
+    decorators like ``@abstractmethod``.  Adds all locations from
+    suppressed clusters to ``ctx.suppressed_locations``.
     """
 
     def __init__(self, suppress_patterns: tuple[str, ...]) -> None:
@@ -84,18 +61,9 @@ class PatternMatchStage:
         ctx: FilterContext,
     ) -> bool:
         for loc in cluster.locations:
-            # Use pre-populated text (includes 1 context line above)
-            # when available; fall back to file read for backwards compat.
-            if loc.text is not None:
-                lines = loc.text.splitlines()
-            else:
-                if loc.file not in ctx.cache:
-                    ctx.cache[loc.file] = ctx.read_fn(loc.file)
-                source = ctx.cache[loc.file]
-                if source is None:
-                    continue
-                lines = _extract_lines(source, loc.lines, context_above=1)
-            for line in lines:
+            if loc.text is None:
+                continue
+            for line in loc.text.splitlines():
                 for pat in self._patterns:
                     if fnmatch(line, pat):
                         return True
@@ -142,10 +110,9 @@ class SiblingStage:
 def run_filters(
     clusters: list[CloneCluster],
     stages: Sequence[FilterStage],
-    read_fn: ReadFn,
 ) -> list[CloneCluster]:
     """Run *clusters* through a sequence of filter stages."""
-    ctx = FilterContext(read_fn=read_fn)
+    ctx = FilterContext()
     for stage in stages:
         clusters = stage(clusters, ctx)
     return clusters
@@ -168,7 +135,6 @@ def build_filter_stages(config: object) -> list[FilterStage]:
 def filter_clusters(
     clusters: list[CloneCluster],
     suppress_patterns: tuple[str, ...],
-    read_fn: ReadFn,
 ) -> list[CloneCluster]:
     """Remove clone clusters whose source lines match any suppress pattern.
 
@@ -181,4 +147,4 @@ def filter_clusters(
         PatternMatchStage(suppress_patterns),
         SiblingStage(),
     ]
-    return run_filters(clusters, stages, read_fn)
+    return run_filters(clusters, stages)

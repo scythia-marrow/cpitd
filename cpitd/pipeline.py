@@ -165,7 +165,7 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
     clusters = populate_text(clusters, _read_file_str)
     stages = build_filter_stages(config)
     if stages:
-        clusters = run_filters(clusters, stages, _read_file_str)
+        clusters = run_filters(clusters, stages)
     return clusters, file_token_counts
 
 
