@@ -232,9 +232,13 @@ def aggregate_clone_groups(
     return sorted(clusters, key=lambda c: (-c.token_count, -c.line_count))
 
 
+WarnFn = Callable[[str], None]
+
+
 def populate_text(
     clusters: list[CloneCluster],
     read_fn: ReadFn,
+    warn_fn: WarnFn | None = None,
 ) -> list[CloneCluster]:
     """Attach source text to locations and clusters, reading each file once.
 
@@ -242,12 +246,24 @@ def populate_text(
     (for suppression pattern matching).  Per-cluster text is the display
     text from the first sorted location (no context).  ``line_count`` is
     derived from the display text so it always matches what is shown.
+
+    If a file cannot be read (e.g. deleted between discovery and text
+    extraction), the location's text is set to None and a warning is
+    emitted via *warn_fn*.
     """
     cache: dict[str, str | None] = {}
+    warned: set[str] = set()
 
     def _read(path: str) -> str | None:
         if path not in cache:
             cache[path] = read_fn(path)
+            if cache[path] is None and path not in warned:
+                warned.add(path)
+                if warn_fn is not None:
+                    warn_fn(
+                        f"cannot read {path} for text extraction "
+                        f"(file may have been deleted since scan started)"
+                    )
         return cache[path]
 
     result: list[CloneCluster] = []

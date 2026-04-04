@@ -162,7 +162,11 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             file=sys.stderr,
         )
         clusters = [c for c in clusters if len(c.locations) >= 2]
-    clusters = populate_text(clusters, _read_file_str)
+    clusters = populate_text(
+        clusters,
+        _read_file_str,
+        warn_fn=lambda msg: _warn(msg, verbose=verbose),
+    )
     stages = build_filter_stages(config)
     if stages:
         clusters = run_filters(clusters, stages)

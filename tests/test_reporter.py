@@ -11,6 +11,7 @@ from cpitd.reporter import (
     compute_file_stats,
     format_human,
     format_json,
+    populate_text,
 )
 from cpitd.winnowing import HashTreeNode
 
@@ -402,3 +403,79 @@ class TestComputeFileStats:
     def test_empty_clusters(self):
         stats = compute_file_stats([], {"a.py": 100})
         assert stats == []
+
+
+class TestPopulateText:
+    """Tests for populate_text — text extraction and warning on missing files."""
+
+    def test_populates_location_and_cluster_text(self):
+        cluster = CloneCluster(
+            locations=(
+                CloneLocation(file="a.py", lines=(2, 3)),
+                CloneLocation(file="b.py", lines=(1, 2)),
+            ),
+            line_count=2,
+            token_count=20,
+        )
+        files = {
+            "a.py": "line1\nalpha\nbeta\nline4",
+            "b.py": "gamma\ndelta\nline3",
+        }
+        result = populate_text([cluster], lambda p: files.get(p))
+        c = result[0]
+        # Cluster display text from first sorted location (a.py lines 2-3)
+        assert c.text == "alpha\nbeta"
+        # Location text includes 1 context line above
+        loc_a = [loc for loc in c.locations if loc.file == "a.py"][0]
+        assert loc_a.text == "line1\nalpha\nbeta"
+
+    def test_line_count_derived_from_text(self):
+        cluster = CloneCluster(
+            locations=(
+                CloneLocation(file="a.py", lines=(1, 3)),
+                CloneLocation(file="b.py", lines=(1, 3)),
+            ),
+            line_count=99,  # provisional, should be overwritten
+            token_count=20,
+        )
+        files = {"a.py": "one\ntwo\nthree", "b.py": "a\nb\nc"}
+        result = populate_text([cluster], lambda p: files.get(p))
+        assert result[0].line_count == 3
+
+    def test_unreadable_file_sets_text_none_and_warns(self):
+        """File deleted between scan and text extraction."""
+        cluster = CloneCluster(
+            locations=(
+                CloneLocation(file="gone.py", lines=(1, 5)),
+                CloneLocation(file="still.py", lines=(1, 5)),
+            ),
+            line_count=5,
+            token_count=30,
+        )
+        files = {"still.py": "a\nb\nc\nd\ne"}
+        warnings: list[str] = []
+        result = populate_text(
+            [cluster], lambda p: files.get(p), warn_fn=warnings.append
+        )
+        c = result[0]
+        gone_loc = [loc for loc in c.locations if loc.file == "gone.py"][0]
+        assert gone_loc.text is None
+        still_loc = [loc for loc in c.locations if loc.file == "still.py"][0]
+        assert still_loc.text is not None
+        assert len(warnings) == 1
+        assert "gone.py" in warnings[0]
+        assert "deleted" in warnings[0]
+
+    def test_unreadable_file_warns_once_per_file(self):
+        """Multiple locations in the same missing file produce one warning."""
+        cluster = CloneCluster(
+            locations=(
+                CloneLocation(file="gone.py", lines=(1, 5)),
+                CloneLocation(file="gone.py", lines=(10, 15)),
+            ),
+            line_count=5,
+            token_count=30,
+        )
+        warnings: list[str] = []
+        populate_text([cluster], lambda _: None, warn_fn=warnings.append)
+        assert len(warnings) == 1
