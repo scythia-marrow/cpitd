@@ -46,9 +46,12 @@ def _group_to_cluster(g: CloneMatchGroup) -> CloneCluster:
             key=lambda loc: (loc.file, loc.lines),
         )
     )
+    # Use max line span across all locations for a deterministic line_count
+    # regardless of processing order (as_completed is non-deterministic).
+    line_count = max(loc.node.end_line - loc.node.start_line + 1 for loc in g.locations)
     return CloneCluster(
         locations=locations,
-        line_count=g.locations[0].node.end_line - g.locations[0].node.start_line + 1,
+        line_count=line_count,
         token_count=g.locations[0].node.token_count,
     )
 

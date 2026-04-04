@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Add default scan of current directory when no paths are provided (#6)
 
 ### Fixed
+- Fix non-deterministic output caused by as_completed ordering (#60)
 - Fix intra-file clones losing locations during consecutive group merging (#44)
 - Fix --min-tokens to filter clone groups instead of only whole files (#32)
 - Fix filtered clone reports losing token counts and similarity metrics (#32)

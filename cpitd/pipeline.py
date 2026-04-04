@@ -116,6 +116,11 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             futures = {pool.submit(_process_file, item): item[0] for item in work_items}
             results = [f.result() for f in as_completed(futures)]
 
+    # Sort results by file path for deterministic index insertion order.
+    # as_completed() returns in arrival order which varies between runs;
+    # without this sort, dict iteration in find_clones() is non-deterministic.
+    results.sort(key=lambda r: r[1] if len(r) > 1 and isinstance(r[1], str) else "")
+
     for result in results:
         tag = result[0]
         if tag == _FileResult.SKIP:
