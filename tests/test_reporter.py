@@ -11,6 +11,7 @@ from cpitd.reporter import (
     compute_file_stats,
     format_human,
     format_json,
+    format_sarif,
     populate_text,
 )
 from cpitd.winnowing import HashTreeNode
@@ -325,6 +326,88 @@ class TestFormatJson:
         format_json([], out)
         data = json.loads(out.getvalue())
         assert data["total_groups"] == 0
+
+
+class TestFormatSarif:
+    def _make_cluster(self, **kwargs):
+        defaults = {
+            "locations": (
+                CloneLocation(file="a.py", lines=(1, 5)),
+                CloneLocation(file="b.py", lines=(10, 14)),
+            ),
+            "line_count": 5,
+            "token_count": 30,
+        }
+        defaults.update(kwargs)
+        return CloneCluster(**defaults)
+
+    def test_valid_json_and_schema(self):
+        out = io.StringIO()
+        format_sarif([self._make_cluster()], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        assert data["version"] == "2.1.0"
+        assert "$schema" in data
+        assert len(data["runs"]) == 1
+
+    def test_tool_metadata(self):
+        out = io.StringIO()
+        format_sarif([self._make_cluster()], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        driver = data["runs"][0]["tool"]["driver"]
+        assert driver["name"] == "cpitd"
+        assert driver["semanticVersion"] == "0.3.1"
+        assert len(driver["rules"]) == 1
+        assert driver["rules"][0]["id"] == "cpitd/clone-group"
+
+    def test_result_structure(self):
+        out = io.StringIO()
+        format_sarif([self._make_cluster()], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        results = data["runs"][0]["results"]
+        assert len(results) == 1
+        r = results[0]
+        assert r["ruleId"] == "cpitd/clone-group"
+        assert r["ruleIndex"] == 0
+        assert r["level"] == "warning"
+        assert "5 lines" in r["message"]["text"]
+        assert "30 tokens" in r["message"]["text"]
+
+    def test_locations_and_related(self):
+        out = io.StringIO()
+        format_sarif([self._make_cluster()], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        r = data["runs"][0]["results"][0]
+        # All clone locations appear under locations[]
+        assert len(r["locations"]) == 2
+        loc0 = r["locations"][0]["physicalLocation"]
+        assert loc0["artifactLocation"]["uri"] == "a.py"
+        assert loc0["region"]["startLine"] == 1
+        assert loc0["region"]["endLine"] == 5
+        # relatedLocations cross-reference all locations
+        assert len(r["relatedLocations"]) == 2
+        assert r["relatedLocations"][0]["id"] == 0
+        assert r["relatedLocations"][1]["id"] == 1
+
+    def test_empty_clusters(self):
+        out = io.StringIO()
+        format_sarif([], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        assert data["runs"][0]["results"] == []
+
+    def test_multiple_clusters(self):
+        c1 = self._make_cluster()
+        c2 = self._make_cluster(
+            locations=(
+                CloneLocation(file="x.py", lines=(1, 3)),
+                CloneLocation(file="y.py", lines=(5, 7)),
+            ),
+            line_count=3,
+            token_count=20,
+        )
+        out = io.StringIO()
+        format_sarif([c1, c2], out, tool_version="0.3.1")
+        data = json.loads(out.getvalue())
+        assert len(data["runs"][0]["results"]) == 2
 
 
 class TestComputeFileStats:

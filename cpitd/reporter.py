@@ -12,7 +12,7 @@ from collections import defaultdict
 from typing import Callable, TextIO
 
 from cpitd.indexer import CloneMatchGroup, NodeLocation
-from cpitd.types import frozen_slots
+from cpitd.types import frozen_slots, protocol_impl
 
 
 @frozen_slots
@@ -359,6 +359,7 @@ def compute_file_stats(
 ReadFn = Callable[[str], str | None]
 
 
+@protocol_impl("Formatter")
 def format_human(
     clusters: list[CloneCluster],
     out: TextIO,
@@ -394,6 +395,7 @@ def format_human(
             )
 
 
+@protocol_impl("Formatter")
 def format_json(
     clusters: list[CloneCluster],
     out: TextIO,
@@ -428,5 +430,107 @@ def format_json(
             }
             for fs in file_stats
         ]
+    _write_json(data, out)
+
+
+def _write_json(data: object, out: TextIO) -> None:
+    """Serialize *data* as indented JSON followed by a trailing newline."""
     json.dump(data, out, indent=2)
     out.write("\n")
+
+
+def _sarif_physical_location(loc: CloneLocation) -> dict[str, object]:
+    """Build a SARIF physicalLocation dict for a clone location."""
+    return {
+        "artifactLocation": {"uri": loc.file},
+        "region": {"startLine": loc.lines[0], "endLine": loc.lines[1]},
+    }
+
+
+@protocol_impl("Formatter")
+def format_sarif(
+    clusters: list[CloneCluster],
+    out: TextIO,
+    file_stats: list[FileStat] | None = None,
+    *,
+    show_text: bool = True,
+    tool_version: str = "",
+) -> None:
+    """Write SARIF v2.1.0 formatted clone report.
+
+    Produces output compatible with GitHub Code Scanning, GitLab SAST,
+    and other SARIF consumers.  Each clone cluster becomes one ``result``
+    with all clone locations listed as ``locations`` and cross-referenced
+    via ``relatedLocations``.
+    """
+    results: list[dict[str, object]] = []
+    for i, c in enumerate(clusters, 1):
+        # Primary location is the first; all locations listed under locations[]
+        locations: list[dict] = [
+            {"physicalLocation": _sarif_physical_location(loc)} for loc in c.locations
+        ]
+
+        # relatedLocations cross-reference all locations with an id
+        related: list[dict] = [
+            {
+                "id": idx,
+                "physicalLocation": _sarif_physical_location(loc),
+                "message": {
+                    "text": f"Clone location {idx + 1}: {loc.file} "
+                    f"lines {loc.lines[0]}-{loc.lines[1]}",
+                },
+            }
+            for idx, loc in enumerate(c.locations)
+        ]
+
+        loc_summary = ", ".join(
+            f"{loc.file}:{loc.lines[0]}-{loc.lines[1]}" for loc in c.locations
+        )
+        message = (
+            f"Code clone ({c.line_count} lines, {c.token_count} tokens) "
+            f"found in {len(c.locations)} locations: {loc_summary}"
+        )
+
+        result: dict[str, object] = {
+            "ruleId": "cpitd/clone-group",
+            "ruleIndex": 0,
+            "level": "warning",
+            "message": {"text": message},
+            "locations": locations,
+            "relatedLocations": related,
+        }
+        results.append(result)
+
+    sarif: dict[str, object] = {
+        "version": "2.1.0",
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "cpitd",
+                        "semanticVersion": tool_version,
+                        "informationUri": "https://github.com/scythia-marrow/cpitd",
+                        "rules": [
+                            {
+                                "id": "cpitd/clone-group",
+                                "shortDescription": {
+                                    "text": "Duplicated code clone group",
+                                },
+                                "fullDescription": {
+                                    "text": "A group of code locations that share "
+                                    "identical or near-identical token sequences, "
+                                    "indicating copy-pasted code.",
+                                },
+                                "defaultConfiguration": {"level": "warning"},
+                                "helpUri": "https://github.com/scythia-marrow/cpitd#readme",
+                            },
+                        ],
+                    },
+                },
+                "results": results,
+            },
+        ],
+    }
+
+    _write_json(sarif, out)

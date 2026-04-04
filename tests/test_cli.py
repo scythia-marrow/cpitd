@@ -142,3 +142,66 @@ class TestCliOptions:
         result = runner.invoke(main, [FIXTURES, "--min-tokens", "5"])
         assert result.exit_code == 1  # clones found
         assert "|" in result.output
+
+    def test_sarif_output_is_valid(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [FIXTURES, "--min-tokens", "5", "--format", "sarif"]
+        )
+        data = json.loads(result.output)
+        assert data["version"] == "2.1.0"
+        assert len(data["runs"]) == 1
+        assert len(data["runs"][0]["results"]) >= 1
+
+
+class TestFailAbove:
+    def test_fail_above_count_below_threshold(self):
+        """No failure when clone count is within limit."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [FIXTURES, "--min-tokens", "5", "--fail-above-count", "999"]
+        )
+        # Clones found but under threshold — still exit 1 because clones exist
+        assert result.exit_code == 1
+
+    def test_fail_above_count_exceeded(self):
+        """Exit 1 with stderr message when clone count exceeds limit."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [FIXTURES, "--min-tokens", "5", "--fail-above-count", "0"]
+        )
+        assert result.exit_code == 1
+
+    def test_fail_above_pct_below_threshold(self):
+        """No extra failure when duplication is within limit."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [FIXTURES, "--min-tokens", "5", "--fail-above-pct", "99.9"]
+        )
+        assert result.exit_code == 1  # clones found, but under pct threshold
+
+    def test_fail_above_pct_exceeded(self):
+        """Exit 1 when a file's duplication exceeds the threshold."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [FIXTURES, "--min-tokens", "5", "--fail-above-pct", "0.0"]
+        )
+        assert result.exit_code == 1
+
+    def test_fail_above_no_clones(self, tmp_path):
+        """No failure when there are no clones at all."""
+        (tmp_path / "solo.py").write_text("x = 1\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                str(tmp_path),
+                "--min-tokens",
+                "5",
+                "--fail-above-count",
+                "0",
+                "--fail-above-pct",
+                "0.0",
+            ],
+        )
+        assert result.exit_code == 0

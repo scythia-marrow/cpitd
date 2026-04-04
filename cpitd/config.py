@@ -19,7 +19,7 @@ from cpitd.types import frozen_slots
 class Config:
     """Runtime configuration for a cpitd analysis run."""
 
-    min_tokens: int = 50
+    min_tokens: int = 20
     normalize: NormalizationLevel = NormalizationLevel.EXACT
     output_format: str = "human"
     ignore_patterns: tuple[str, ...] = ()
@@ -27,6 +27,10 @@ class Config:
     suppress_patterns: tuple[str, ...] = ()
     verbose: bool = False
     show_text: bool = True
+    fail_above_pct: float | None = None
+    fail_above_count: int | None = None
+    cache: bool = False
+    cache_path: str | None = None
 
 
 class ConfigFileError(Exception):
@@ -76,9 +80,9 @@ def _convert_value(toml_key: str, field_name: str, value: object) -> object:
             raise ConfigFileError(
                 f"[tool.cpitd] '{toml_key}' must be a string, got {type(value).__name__}"
             )
-        if value not in {"human", "json"}:
+        if value not in {"human", "json", "sarif"}:
             raise ConfigFileError(
-                f"[tool.cpitd] '{toml_key}' must be 'human' or 'json', got '{value}'"
+                f"[tool.cpitd] '{toml_key}' must be 'human', 'json', or 'sarif', got '{value}'"
             )
         return value
 

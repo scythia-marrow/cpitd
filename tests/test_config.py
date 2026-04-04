@@ -102,7 +102,9 @@ class TestValueValidation:
             self._load(tmp_path, "normalize = false")
 
     def test_format_invalid_choice(self, tmp_path: Path) -> None:
-        with pytest.raises(ConfigFileError, match="must be 'human' or 'json'"):
+        with pytest.raises(
+            ConfigFileError, match="must be 'human', 'json', or 'sarif'"
+        ):
             self._load(tmp_path, 'format = "xml"')
 
     def test_format_non_string_rejected(self, tmp_path: Path) -> None:

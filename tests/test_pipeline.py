@@ -129,7 +129,7 @@ class TestScanAndReport:
     def test_human_output(self):
         config = Config(min_tokens=5, output_format="human")
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         output = out.getvalue()
         if clusters:
             assert "clone group" in output.lower()
@@ -139,7 +139,7 @@ class TestScanAndReport:
     def test_human_output_includes_file_stats(self):
         config = Config(min_tokens=5, output_format="human")
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         output = out.getvalue()
         if clusters:
             assert "File duplication:" in output
@@ -181,14 +181,14 @@ class TestScanAndReport:
     def test_human_output_includes_text_by_default(self):
         config = Config(min_tokens=5, output_format="human")
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         if clusters:
             assert "|" in out.getvalue()
 
     def test_json_output_includes_text_by_default(self):
         config = Config(min_tokens=5, output_format="json")
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         if clusters:
             data = json.loads(out.getvalue())
             assert "text" in data["clone_reports"][0]
@@ -196,14 +196,14 @@ class TestScanAndReport:
     def test_no_text_suppresses_source(self):
         config = Config(min_tokens=5, output_format="human", show_text=False)
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         if clusters:
             assert "|" not in out.getvalue()
 
     def test_no_text_suppresses_json_text(self):
         config = Config(min_tokens=5, output_format="json", show_text=False)
         out = io.StringIO()
-        clusters = scan_and_report(config, (FIXTURES,), out=out)
+        clusters, _ = scan_and_report(config, (FIXTURES,), out=out)
         if clusters:
             data = json.loads(out.getvalue())
             assert "text" not in data["clone_reports"][0]
@@ -211,8 +211,9 @@ class TestScanAndReport:
     def test_empty_directory(self, tmp_path):
         config = Config(min_tokens=5)
         out = io.StringIO()
-        clusters = scan_and_report(config, (str(tmp_path),), out=out)
+        clusters, file_token_counts = scan_and_report(config, (str(tmp_path),), out=out)
         assert clusters == []
+        assert file_token_counts == {}
         assert "No clones detected" in out.getvalue()
 
 

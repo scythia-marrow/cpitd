@@ -1,0 +1,52 @@
+# cpitd — Clone Detection for Pull Requests
+#
+# This workflow runs cpitd on every pull request and uploads results
+# to GitHub Code Scanning via SARIF. Clone groups appear as inline
+# annotations on the PR diff.
+#
+# Copy this file to .github/workflows/cpitd.yml in your repository.
+
+name: Clone Detection
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  security-events: write  # required for SARIF upload
+  contents: read
+
+jobs:
+  cpitd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Restore cached index from previous runs.
+      # The cache key uses the commit SHA so each commit gets its own
+      # entry, and restore-keys falls back to any prior cpitd cache.
+      - uses: actions/cache@v4
+        with:
+          path: .cpitd-cache.json
+          key: cpitd-${{ github.sha }}
+          restore-keys: cpitd-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install cpitd
+
+      # Run cpitd with SARIF output and index caching.
+      # Adjust --min-tokens and --fail-above-pct to taste.
+      - run: cpitd --format sarif --cache --min-tokens 20 . > cpitd.sarif
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()  # upload even if cpitd exits non-zero
+        with:
+          sarif_file: cpitd.sarif
+          category: cpitd
+
+      # Optional: fail the PR if duplication is too high.
+      # Uncomment and adjust the threshold as needed.
+      # - run: cpitd --cache --fail-above-pct 30 --fail-above-count 10 .

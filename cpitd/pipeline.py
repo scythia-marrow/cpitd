@@ -9,16 +9,19 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import TextIO
 
+from cpitd.cache import IndexCache, collect_blob_shas, load_cache, save_cache
 from cpitd.config import Config
 from cpitd.discovery import discover_files
 from cpitd.filter import build_filter_stages, run_filters
 from cpitd.indexer import LineHashIndex
+from cpitd import __version__
 from cpitd.reporter import (
     CloneCluster,
     aggregate_clone_groups,
     compute_file_stats,
     format_human,
     format_json,
+    format_sarif,
     populate_text,
 )
 from cpitd.tokenizer import NormalizationLevel, tokenize
@@ -101,13 +104,55 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
     file_token_counts: dict[str, int] = {}
     skipped = 0
 
+    # Set up cache if enabled.
+    cache: IndexCache | None = None
+    cache_path: Path | None = None
+    blob_shas: dict[str, str] = {}
+    cached_count = 0
+
+    if config.cache:
+        scan_root = str(Path(paths[0]).resolve()) if paths else "."
+        cache_path = (
+            Path(config.cache_path)
+            if config.cache_path
+            else Path(scan_root, ".cpitd-cache.json")
+        )
+        cache = load_cache(
+            cache_path,
+            cpitd_version=__version__,
+            normalize=int(config.normalize),
+            min_tokens=config.min_tokens,
+        )
+        blob_shas = collect_blob_shas(files, scan_root)
+
+    # Separate files into cache hits and misses.
+    work_items: list[tuple[str, str, int, int]] = []
+    for fp in files:
+        file_path_str = str(fp)
+        abs_path = str(fp.resolve())
+
+        if cache is not None:
+            blob_sha = blob_shas.get(abs_path)
+            if blob_sha is not None:
+                hit = cache.lookup(abs_path, blob_sha)
+                if hit is not None:
+                    token_count, tree = hit
+                    file_token_counts[file_path_str] = token_count
+                    index.add(file_path_str, tree)
+                    cached_count += 1
+                    continue
+
+        work_items.append((file_path_str, fp.name, config.min_tokens, int(level)))
+
+    if cached_count and verbose:
+        print(
+            f"cpitd: info: {cached_count} file(s) loaded from cache",
+            file=sys.stderr,
+        )
+
     # Sort largest files first so they start processing early,
     # avoiding tail latency when a big file lands in the last batch.
-    work_items = sorted(
-        ((str(fp), fp.name, config.min_tokens, int(level)) for fp in files),
-        key=lambda item: Path(item[0]).stat().st_size,
-        reverse=True,
-    )
+    work_items.sort(key=lambda item: Path(item[0]).stat().st_size, reverse=True)
 
     workers = _max_workers()
     if workers < 1:
@@ -143,8 +188,27 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
         file_token_counts[file_key] = token_count
         index.add(file_key, tree)
 
+        # Store newly processed files in cache.
+        if cache is not None:
+            abs_key = str(Path(file_key).resolve())
+            blob_sha = blob_shas.get(abs_key)
+            if blob_sha is not None:
+                cache.store(abs_key, blob_sha, token_count, tree)
+
     if skipped:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
+
+    # Save updated cache.
+    if cache is not None and cache_path is not None:
+        current_files = {str(fp.resolve()) for fp in files}
+        save_cache(
+            cache,
+            cache_path,
+            cpitd_version=__version__,
+            normalize=int(config.normalize),
+            min_tokens=config.min_tokens,
+            current_files=current_files,
+        )
 
     match_groups = index.find_clones()
     clusters = aggregate_clone_groups(
@@ -177,7 +241,7 @@ def scan_and_report(
     config: Config,
     paths: Paths,
     out: TextIO = sys.stdout,
-) -> list[CloneCluster]:
+) -> tuple[list[CloneCluster], dict[str, int]]:
     """Run scan and write formatted output.
 
     Args:
@@ -186,17 +250,25 @@ def scan_and_report(
         out: Output stream for the report.
 
     Returns:
-        The clone clusters (also written to out).
+        A tuple of (clone clusters, file token counts).
     """
     clusters, file_token_counts = scan(config, paths)
     file_stats = compute_file_stats(clusters, file_token_counts)
 
-    if config.output_format == "json":
+    if config.output_format == "sarif":
+        format_sarif(
+            clusters,
+            out,
+            file_stats=file_stats,
+            show_text=config.show_text,
+            tool_version=__version__,
+        )
+    elif config.output_format == "json":
         format_json(clusters, out, file_stats=file_stats, show_text=config.show_text)
     else:
         format_human(clusters, out, file_stats=file_stats, show_text=config.show_text)
 
-    return clusters
+    return clusters, file_token_counts
 
 
 def _read_file(path: Path, *, verbose: bool = False) -> str | None:

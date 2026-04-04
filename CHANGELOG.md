@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-04
+
+### Added
+- Add SARIF output format (`--format sarif`) for GitHub Code Scanning and other SAST consumers (#68)
+- Add `--fail-above-pct` and `--fail-above-count` threshold flags for CI gating (#69)
+- Add index cache (`--cache`) using git blob SHAs to skip tokenization of unchanged files, with content-hash fallback for non-git directories (#70, #74)
+- Add GitHub Actions example workflow for PR clone detection with SARIF upload (#71)
+
+## [0.3.0] - 2026-04-04
+
 ### Added
 - Add parallel file processing for tokenization and hashing (#51)
 - Add warning when safety filter drops single-location clusters (#45)

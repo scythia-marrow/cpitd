@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cpitd"
-version = "0.3.0"
+version = "0.3.1"
 description = "Copy Paste Is The Devil — language-agnostic code clone detection"
 readme = "README.md"
 license = "MIT"
@@ -54,6 +54,9 @@ include = ["cpitd*"]
 [tool.black]
 line-length = 88
 target-version = ["py312"]
+
+[tool.cpitd]
+normalize=1
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
