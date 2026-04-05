@@ -112,7 +112,8 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
     cache_dirty = False
 
     if config.cache:
-        scan_root = str(Path(paths[0]).resolve()) if paths else "."
+        root = Path(paths[0]).resolve() if paths else Path(".")
+        scan_root = str(root if root.is_dir() else root.parent)
         cache_path = (
             Path(config.cache_path)
             if config.cache_path

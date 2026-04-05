@@ -464,7 +464,7 @@ def format_sarif(
     via ``relatedLocations``.
     """
     results: list[dict[str, object]] = []
-    for i, c in enumerate(clusters, 1):
+    for c in clusters:
         # Primary location is the first; all locations listed under locations[]
         locations: list[dict] = [
             {"physicalLocation": _sarif_physical_location(loc)} for loc in c.locations
