@@ -57,6 +57,7 @@ target-version = ["py312"]
 
 [tool.cpitd]
 normalize=1
+suppress=["*@protocol_impl*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

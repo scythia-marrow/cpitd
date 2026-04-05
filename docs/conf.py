@@ -3,7 +3,7 @@
 project = "cpitd"
 copyright = "2025, cpitd contributors"
 author = "cpitd contributors"
-release = "0.1.0"
+release = "0.3.1"
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -15,4 +15,4 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build"]
 
 html_theme = "sphinx_rtd_theme"
-html_static_path = ["_static"]
+html_static_path = []

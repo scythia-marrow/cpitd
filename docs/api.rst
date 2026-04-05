@@ -1,6 +1,21 @@
 API Reference
 =============
 
+Pipeline
+--------
+.. automodule:: cpitd.pipeline
+   :members:
+
+Config
+------
+.. automodule:: cpitd.config
+   :members:
+
+Discovery
+---------
+.. automodule:: cpitd.discovery
+   :members:
+
 Tokenizer
 ---------
 .. automodule:: cpitd.tokenizer
@@ -16,12 +31,22 @@ Indexer
 .. automodule:: cpitd.indexer
    :members:
 
+Filter
+------
+.. automodule:: cpitd.filter
+   :members:
+
 Reporter
 --------
 .. automodule:: cpitd.reporter
    :members:
 
-Config
-------
-.. automodule:: cpitd.config
+Cache
+-----
+.. automodule:: cpitd.cache
+   :members:
+
+Types
+-----
+.. automodule:: cpitd.types
    :members:
