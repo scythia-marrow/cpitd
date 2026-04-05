@@ -109,6 +109,7 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
     cache_path: Path | None = None
     blob_shas: dict[str, str] = {}
     cached_count = 0
+    cache_dirty = False
 
     if config.cache:
         scan_root = str(Path(paths[0]).resolve()) if paths else "."
@@ -194,21 +195,24 @@ def scan(config: Config, paths: Paths) -> tuple[list[CloneCluster], dict[str, in
             blob_sha = blob_shas.get(abs_key)
             if blob_sha is not None:
                 cache.store(abs_key, blob_sha, token_count, tree)
+                cache_dirty = True
 
     if skipped:
         _warn(f"{skipped} file(s) skipped due to read/parse errors", verbose=verbose)
 
-    # Save updated cache.
+    # Save updated cache only if entries were added or files need pruning.
     if cache is not None and cache_path is not None:
         current_files = {str(fp.resolve()) for fp in files}
-        save_cache(
-            cache,
-            cache_path,
-            cpitd_version=__version__,
-            normalize=int(config.normalize),
-            min_tokens=config.min_tokens,
-            current_files=current_files,
-        )
+        needs_prune = any(p not in current_files for p in cache.entries)
+        if cache_dirty or needs_prune:
+            save_cache(
+                cache,
+                cache_path,
+                cpitd_version=__version__,
+                normalize=int(config.normalize),
+                min_tokens=config.min_tokens,
+                current_files=current_files,
+            )
 
     match_groups = index.find_clones()
     clusters = aggregate_clone_groups(
